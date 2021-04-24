@@ -293,12 +293,12 @@ func (r *Rule) eval(abox *[]Atom) Omega {
 
 	result := omegas[0]
 
-	start := time.Now()
+	// start := time.Now()
 	for i := 1; i < len(omegas); i++ {
 		result = result.join(&omegas[i])
 	}
-	elapsed := time.Since(start)
-	fmt.Println("join", elapsed)
+	// elapsed := time.Since(start)
+	// fmt.Println("join", elapsed)
 
 	return result
 }
