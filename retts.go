@@ -86,40 +86,40 @@ func (a1 *Atom) equalTo(a2 *Atom) bool {
 
 // Store {{{
 
-type Node struct {
-	sPos, pPos, oPos []int
-}
+// type Node struct {
+// 	sPos, pPos, oPos []int
+// }
 
-type Store struct {
-	abox  []Atom
-	index map[Constant]Node
-}
+// type Store struct {
+// 	abox  []Atom
+// 	index map[Constant]Node
+// }
 
-func (s *Store) addAtom(a Atom) {
-	a.idx = len((*s).abox)
-	(*s).abox = append((*s).abox, a)
+// func (s *Store) addAtom(a Atom) {
+// 	a.idx = len((*s).abox)
+// 	(*s).abox = append((*s).abox, a)
 
-	sNode, ok1 := (*s).index[a.s.(Constant)]
-	if !ok1 {
-		sNode = Node{}
-	}
-	sNode.sPos = append(sNode.sPos, a.idx)
-	(*s).index[a.s.(Constant)] = sNode
+// 	sNode, ok1 := (*s).index[a.s.(Constant)]
+// 	if !ok1 {
+// 		sNode = Node{}
+// 	}
+// 	sNode.sPos = append(sNode.sPos, a.idx)
+// 	(*s).index[a.s.(Constant)] = sNode
 
-	pNode, ok2 := (*s).index[a.p.(Constant)]
-	if !ok2 {
-		pNode = Node{}
-	}
-	pNode.pPos = append(pNode.pPos, a.idx)
-	(*s).index[a.p.(Constant)] = pNode
+// 	pNode, ok2 := (*s).index[a.p.(Constant)]
+// 	if !ok2 {
+// 		pNode = Node{}
+// 	}
+// 	pNode.pPos = append(pNode.pPos, a.idx)
+// 	(*s).index[a.p.(Constant)] = pNode
 
-	oNode, ok3 := (*s).index[a.o.(Constant)]
-	if !ok3 {
-		oNode = Node{}
-	}
-	oNode.oPos = append(oNode.oPos, a.idx)
-	(*s).index[a.o.(Constant)] = oNode
-}
+// 	oNode, ok3 := (*s).index[a.o.(Constant)]
+// 	if !ok3 {
+// 		oNode = Node{}
+// 	}
+// 	oNode.oPos = append(oNode.oPos, a.idx)
+// 	(*s).index[a.o.(Constant)] = oNode
+// }
 
 // }}}
 
@@ -260,11 +260,12 @@ func (a *Atom) applyMapping(mu *Mu) Atom {
 
 // findMappings finds all mappings in an abox (i.e. list of ground
 // atoms) corresponding to graph pattern bgp
-func (bgp *Atom) findMappings(abox *[]Atom) Omega {
+func (bgp *Atom) findMappings(abox *[]Atom, lastDelta int) Omega {
 	omega := make(Omega, 0, 100)
 
 	// TODO use index structure
-	for _, a := range *abox {
+	for i := lastDelta; i < len(*abox); i++ {
+		a := (*abox)[i]
 		if bgp.matches(&a) {
 			omega = append(omega, bgp.toMu(&a))
 		}
@@ -290,6 +291,7 @@ func (a1 *Atom) knownTo(abox *[]Atom) bool {
 
 type Rule struct {
 	head, body []Atom
+	recursive  []bool
 }
 
 func (r *Rule) isFact() bool {
@@ -297,22 +299,26 @@ func (r *Rule) isFact() bool {
 }
 
 // eval evaluates a rule w.r.t. to an abox, and returns a multiset omega
-func (r *Rule) eval(abox *[]Atom) Omega {
+func (r *Rule) eval(abox *[]Atom, lastDelta int) Omega {
 	omegas := make([]Omega, 0)
 
 	// TODO parallel?
-	for _, b := range (*r).body {
-		omegas = append(omegas, b.findMappings(abox))
+	for i, b := range (*r).body {
+		if (*r).recursive[i] {
+			omegas = append(omegas, b.findMappings(abox, lastDelta))
+		} else {
+			omegas = append(omegas, b.findMappings(abox, 0))
+		}
 	}
 
 	result := omegas[0]
 
-	start := time.Now()
+	// start := time.Now()
 	for i := 1; i < len(omegas); i++ {
 		result = result.joinPar(&omegas[i])
 	}
-	elapsed := time.Since(start)
-	fmt.Println("join", elapsed)
+	// elapsed := time.Since(start)
+	// fmt.Println("join", elapsed)
 
 	return result
 }
@@ -336,7 +342,7 @@ func eval(tbox *[]Rule, abox *[]Atom, lastDelta int, stats *Stats) []Atom {
 
 	// TODO parallel!
 	for _, r := range *tbox {
-		omega := r.eval(abox)
+		omega := r.eval(abox, lastDelta)
 		for _, mu := range omega {
 			// only add mu's that utilize a fact from the last delta,
 			// i.e. utilize a ground atom with an index >= lastDelta
@@ -376,32 +382,53 @@ func naiveDatalog(tbox *[]Rule, abox *[]Atom) Stats {
 
 }
 
+func runNaiveDatalog(tbox *[]Rule, abox *[]Atom) {
+	fmt.Println("starting naive Datalog evaluation")
+	start := time.Now()
+	stats1 := naiveDatalog(tbox, abox)
+	elapsed := time.Since(start)
+	fmt.Println("finished naive Datalog evaluation, took", elapsed)
+	fmt.Println("final abox size:", len(*abox), "stats:", stats1)
+}
+
 //
 
-// main {{{
+// Transitive Closure {{{
 
-func main() {
+func genRngGraph(numNodes, numAtoms int) []Atom {
+	abox := make([]Atom, 0, numAtoms)
+	count := 0
 
+	for count < numAtoms {
+		n1 := rand.Intn(numNodes)
+		n2 := rand.Intn(numNodes)
+		a := Atom{count, Constant(":n" + strconv.Itoa(n1)), Constant(":link"), Constant(":n" + strconv.Itoa(n2))}
+		if !a.knownTo(&abox) {
+			abox = append(abox, a)
+			count += 1
+		}
+
+	}
+
+	return abox
+}
+
+func testTransitiveClosure() {
 	// TBox
 	r1 := Rule{
 		head: []Atom{
 			Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?y")}},
 		body: []Atom{
-			Atom{-1, Variable("?x"), Constant(":link"), Variable("?y")}}}
+			Atom{-1, Variable("?x"), Constant(":link"), Variable("?y")}},
+		recursive: []bool{false, false}}
 
 	r2 := Rule{
 		head: []Atom{
 			Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?y")}},
 		body: []Atom{
 			Atom{-1, Variable("?x"), Constant(":link"), Variable("?z")},
-			Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}}}
-
-	// // goal
-	// goal := Rule{
-	// 	head: []Atom{
-	// 		Atom{-1, Constant(":goal"), Constant(":state"), Constant(":success")}},
-	// 	body: []Atom{
-	// 		Atom{-1, Constant(":a"), Constant(":reachable"), Constant(":c")}}}
+			Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}},
+		recursive: []bool{false, true}}
 
 	tbox := []Rule{r1, r2}
 
@@ -412,50 +439,18 @@ func main() {
 	// 	Atom{2, Constant(":c"), Constant(":link"), Constant(":d")},
 	// 	Atom{3, Constant(":c"), Constant(":link"), Constant(":c")}}
 
-	abox := genRngAbox(10000, 5000)
+	abox := genRngGraph(10000, 3000)
 
-	// fmt.Println("TBox:")
-	// for _, r := range tbox {
-	// 	fmt.Println(r)
-	// }
-
-	// fmt.Println("ABox:")
-	// for _, r := range abox {
-	// 	fmt.Println(r)
-	// }
-
-	fmt.Println("starting naive Datalog evaluation")
-
-	start := time.Now()
-	stats1 := naiveDatalog(&tbox, &abox)
-	elapsed := time.Since(start)
-	fmt.Println("finished naive Datalog evaluation, took", elapsed)
-	fmt.Println("final abox size:", len(abox), "stats:", stats1)
-	// fmt.Println("final ABox:")
-	// for _, a := range abox {
-	// 	fmt.Println(a)
-	// }
-	// stats2 := naiveDatalog(&tbox, &abox)
-	// fmt.Println("stats:", stats2)
-	// fmt.Println("final ABox:")
-	// for _, a := range abox {
-	// 	fmt.Println(a)
-	// }
+	runNaiveDatalog(&tbox, &abox)
+	runNaiveDatalog(&tbox, &abox)
 }
 
-func genRngAbox(numNodes, numAtoms int) []Atom {
-	abox := make([]Atom, 0, numAtoms)
-	count := 0
+// }}}
 
-	for i := 0; i < numAtoms; i++ {
-		n1 := rand.Intn(numNodes)
-		n2 := rand.Intn(numNodes)
-		a := Atom{count, Constant(":n" + strconv.Itoa(n1)), Constant(":link"), Constant(":n" + strconv.Itoa(n2))}
-		abox = append(abox, a)
-		count += 1
-	}
+// main {{{
 
-	return abox
+func main() {
+
 }
 
 // }}}

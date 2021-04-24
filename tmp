@@ -51,6 +51,3 @@ parallel join with direct append (mutex?)
 starting naive Datalog evaluation
 finished naive Datalog evaluation, took 7.330337342s
 final abox size: 7267 stats: {4269 11}
-
-
-
