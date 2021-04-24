@@ -162,7 +162,7 @@ type Omega []Mu
 
 // join joins two multisets o1 and o2 together based on mu
 // compatibility
-func (o1 *Omega) join(o2 *Omega) Omega {
+func (o1 *Omega) joinPar(o2 *Omega) Omega {
 
 	c := make(chan []Mu)
 
@@ -182,6 +182,20 @@ func (o1 *Omega) join(o2 *Omega) Omega {
 
 	for i := 0; i < len(*o1); i++ {
 		o3 = append(o3, <-c...)
+	}
+
+	return o3
+}
+
+func (o1 *Omega) join(o2 *Omega) Omega {
+	o3 := make(Omega, 0, len(*o1)+len(*o2))
+
+	for _, mu1 := range *o1 {
+		for _, mu2 := range *o2 {
+			if mu1.compatible(&mu2) {
+				o3 = append(o3, mu1.join(&mu2))
+			}
+		}
 	}
 
 	return o3
@@ -293,12 +307,12 @@ func (r *Rule) eval(abox *[]Atom) Omega {
 
 	result := omegas[0]
 
-	// start := time.Now()
+	start := time.Now()
 	for i := 1; i < len(omegas); i++ {
-		result = result.join(&omegas[i])
+		result = result.joinPar(&omegas[i])
 	}
-	// elapsed := time.Since(start)
-	// fmt.Println("join", elapsed)
+	elapsed := time.Since(start)
+	fmt.Println("join", elapsed)
 
 	return result
 }
@@ -398,7 +412,7 @@ func main() {
 	// 	Atom{2, Constant(":c"), Constant(":link"), Constant(":d")},
 	// 	Atom{3, Constant(":c"), Constant(":link"), Constant(":c")}}
 
-	abox := genRngAbox(10000, 3000)
+	abox := genRngAbox(10000, 5000)
 
 	// fmt.Println("TBox:")
 	// for _, r := range tbox {

@@ -1,0 +1,56 @@
+mit index:
+
+1000, 500
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 751.23546ms
+final abox size: 2237 stats: {1643 12}
+
+10000, 3000
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 9.747486244s
+final abox size: 7267 stats: {4269 11}
+
+30000, 4000 
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 5.828231695s
+final abox size: 8605 stats: {4606 5}
+
+ohne index:
+
+1000, 500
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 806.785965ms
+final abox size: 2237 stats: {1643 12}
+
+10000, 3000
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 10.130893414s
+final abox size: 7267 stats: {4269 11}
+
+30000, 4000
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 6.333102334s
+final abox size: 8605 stats: {4606 5}
+
+ohne vergleichs-verringerung:
+
+30000, 4000
+starting naive Datalog evaluation
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 9.419061315s
+final abox size: 8605 stats: {22343 5}
+
+parallel join:
+
+10000, 3000
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 7.191989683s
+final abox size: 7267 stats: {4269 11}
+
+parallel join with direct append (mutex?)
+starting naive Datalog evaluation
+finished naive Datalog evaluation, took 7.330337342s
+final abox size: 7267 stats: {4269 11}
+
+
+
