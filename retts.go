@@ -163,14 +163,25 @@ type Omega []Mu
 // join joins two multisets o1 and o2 together based on mu
 // compatibility
 func (o1 *Omega) join(o2 *Omega) Omega {
-	o3 := make(Omega, 0, len(*o1)+len(*o2))
+
+	c := make(chan []Mu)
 
 	for _, mu1 := range *o1 {
-		for _, mu2 := range *o2 {
-			if mu1.compatible(&mu2) {
-				o3 = append(o3, mu1.join(&mu2))
+		go func(mu1 Mu) {
+			o3Part := make([]Mu, 0, len(*o2))
+			for _, mu2 := range *o2 {
+				if mu1.compatible(&mu2) {
+					o3Part = append(o3Part, mu1.join(&mu2))
+				}
 			}
-		}
+			c <- o3Part
+		}(mu1)
+	}
+
+	o3 := make(Omega, 0, len(*o1)+len(*o2))
+
+	for i := 0; i < len(*o1); i++ {
+		o3 = append(o3, <-c...)
 	}
 
 	return o3
@@ -282,9 +293,12 @@ func (r *Rule) eval(abox *[]Atom) Omega {
 
 	result := omegas[0]
 
+	start := time.Now()
 	for i := 1; i < len(omegas); i++ {
 		result = result.join(&omegas[i])
 	}
+	elapsed := time.Since(start)
+	fmt.Println("join", elapsed)
 
 	return result
 }
