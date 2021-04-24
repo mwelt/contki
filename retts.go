@@ -384,7 +384,7 @@ func main() {
 	// 	Atom{2, Constant(":c"), Constant(":link"), Constant(":d")},
 	// 	Atom{3, Constant(":c"), Constant(":link"), Constant(":c")}}
 
-	abox := genRngAbox(1000, 600)
+	abox := genRngAbox(10000, 3000)
 
 	// fmt.Println("TBox:")
 	// for _, r := range tbox {
