@@ -66,7 +66,6 @@ func isVariable(t Term) bool { return t.getTermType() == VARIABLE }
 func isLiteral(t Term) bool  { return t.getTermType() == LITERAL }
 
 type Atom struct {
-	idx     int
 	s, p, o Term
 }
 
@@ -85,17 +84,12 @@ func (a1 *Atom) equalTo(a2 *Atom) bool {
 // }}}
 
 // Mu / Omega {{{
-type MuMapping map[Variable]Term
-
-type Mu struct {
-	idx     int
-	mapping MuMapping
-}
+type Mu map[Variable]Term
 
 // compatible checks if mu1 is compatible to mu2
 func (m1 *Mu) compatible(m2 *Mu) bool {
-	for k, v := range (*m1).mapping {
-		v_, ok := (*m2).mapping[k]
+	for k, v := range *m1 {
+		v_, ok := *m2[k]
 		if ok && v != v_ {
 			return false
 		}
