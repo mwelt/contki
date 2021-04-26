@@ -89,7 +89,7 @@ type Mu map[Variable]Term
 // compatible checks if mu1 is compatible to mu2
 func (m1 *Mu) compatible(m2 *Mu) bool {
 	for k, v := range *m1 {
-		v_, ok := *m2[k]
+		v_, ok := (*m2)[k]
 		if ok && v != v_ {
 			return false
 		}
@@ -101,18 +101,18 @@ func (m1 *Mu) compatible(m2 *Mu) bool {
 // it
 // join joins two mu mappings together
 func (m1 *Mu) join(m2 *Mu) Mu {
-	m3 := make(MuMapping)
-	for k, v := range (*m1).mapping {
+	m3 := make(Mu)
+	for k, v := range *m1 {
 		m3[k] = v
 	}
-	for k, v := range (*m2).mapping {
+	for k, v := range *m2 {
 		_, ok := m3[k]
 		if !ok {
 			m3[k] = v
 		}
 	}
 
-	return Mu{max(m1.idx, m2.idx), m3}
+	return m3
 }
 
 type Omega []Mu
@@ -178,7 +178,7 @@ func (bgp *Atom) matches(a *Atom) bool {
 
 // toMu creates a mapping mu from a bgp and a matching ground atom
 func (bgp *Atom) toMu(a *Atom) Mu {
-	mu := make(MuMapping)
+	mu := make(Mu)
 	if isVariable(bgp.s) {
 		mu[bgp.s.(Variable)] = a.s
 	}
@@ -188,7 +188,7 @@ func (bgp *Atom) toMu(a *Atom) Mu {
 	if isVariable(bgp.o) {
 		mu[bgp.o.(Variable)] = a.o
 	}
-	return Mu{a.idx, mu}
+	return mu
 }
 
 // applyMapping creates a ground atom from an non ground atom and a
@@ -197,17 +197,17 @@ func (a *Atom) applyMapping(mu *Mu) Atom {
 	ga := Atom{}
 
 	if isVariable(a.s) {
-		ga.s = (*mu).mapping[a.s.(Variable)]
+		ga.s = (*mu)[a.s.(Variable)]
 	} else {
 		ga.s = a.s.(Constant)
 	}
 	if isVariable(a.p) {
-		ga.p = (*mu).mapping[a.p.(Variable)]
+		ga.p = (*mu)[a.p.(Variable)]
 	} else {
 		ga.p = a.p.(Constant)
 	}
 	if isVariable(a.o) {
-		ga.o = (*mu).mapping[a.o.(Variable)]
+		ga.o = (*mu)[a.o.(Variable)]
 	} else {
 		ga.o = a.o.(Constant)
 	}
@@ -313,17 +313,14 @@ func eval(tbox *[]Rule, abox *[]Atom, lastDelta int, stats *Stats) []Atom {
 		for _, mu := range omega {
 			// only add mu's that utilize a fact from the last delta,
 			// i.e. utilize a ground atom with an index >= lastDelta
-			// if mu.idx >= lastDelta {
 			// apply mu to all head atoms of r
 			for _, headAtom := range r.head {
 				ga := headAtom.applyMapping(&mu)
 				stats.cmps += 1
 				if !ga.knownTo(abox) && !ga.knownTo(&delta) {
-					ga.idx = len(*abox) + len(delta)
 					delta = append(delta, ga)
 				}
 			}
-			// }
 		}
 	}
 
@@ -337,9 +334,7 @@ func fixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) (int, Stats) {
 	currDelta := len(*abox)
 
 	for lastDelta < currDelta {
-		fmt.Println("lastDelta:", lastDelta, "currDelta:", currDelta)
 		delta := eval(tbox, abox, lastDelta, &stats)
-		fmt.Println("len(delta):", len(delta))
 		*abox = append(*abox, delta...)
 		lastDelta = currDelta
 		currDelta = len(*abox)
@@ -371,7 +366,7 @@ func genRngGraph(numNodes, numAtoms int) []Atom {
 	for count < numAtoms {
 		n1 := rand.Intn(numNodes)
 		n2 := rand.Intn(numNodes)
-		a := Atom{count, Constant(":n" + strconv.Itoa(n1)), Constant(":link"), Constant(":n" + strconv.Itoa(n2))}
+		a := Atom{Constant(":n" + strconv.Itoa(n1)), Constant(":link"), Constant(":n" + strconv.Itoa(n2))}
 		if !a.knownTo(&abox) {
 			abox = append(abox, a)
 			count += 1
@@ -386,23 +381,23 @@ func testTransitiveClosure() {
 	// TBox
 	r1 := Rule{
 		head: []Atom{
-			Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?y")}},
+			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
 		drules: []DeltaRule{
 			DeltaRule{body: []Atom{
-				Atom{-1, Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: 0}}}
+				Atom{Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: 0}}}
 
 	r2 := Rule{
 		head: []Atom{
-			Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?y")}},
+			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
 		drules: []DeltaRule{
 			DeltaRule{body: []Atom{
 				// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-				Atom{-1, Variable("?x"), Constant(":link"), Variable("?z")},
-				Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
+				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
 			DeltaRule{body: []Atom{
 				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-				Atom{-1, Variable("?x"), Constant(":link"), Variable("?z")},
-				Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 1}}}
+				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 1}}}
 
 	// r2d2 := Rule{
 	// 	head: []Atom{
@@ -423,13 +418,21 @@ func testTransitiveClosure() {
 	// 	Atom{3, Constant(":c"), Constant(":link"), Constant(":c")}}
 
 	abox := genRngGraph(10000, 3000)
+	aboxExt := genRngGraph(10000, 100)
 
 	lastDelta := runFixpoint(&tbox, &abox, 0)
+	stackPointer := lastDelta
 
-	newAbox := genRngGraph(10000, 100)
-	abox = append(abox, newAbox...)
+	abox = append(abox, aboxExt...)
+	lastDelta = runFixpoint(&tbox, &abox, lastDelta)
 
-	runFixpoint(&tbox, &abox, lastDelta)
+	// revert
+	abox = abox[:stackPointer]
+	lastDelta = stackPointer
+	fmt.Println("after revert len(abox)", len(abox))
+
+	abox = append(abox, aboxExt...)
+	lastDelta = runFixpoint(&tbox, &abox, lastDelta)
 }
 
 // }}}
