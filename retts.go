@@ -290,6 +290,21 @@ func (r *Rule) eval(abox *[]Atom, lastDelta int) Omega {
 	return omega
 }
 
+func (r *Rule) evalPar(abox *[]Atom, lastDelta int) Omega {
+	c := make(chan Omega)
+
+	for _, dr := range (*r).drules {
+		go func(dr DeltaRule) {
+			c <- dr.eval(abox, lastDelta)
+		}(dr)
+	}
+
+	omega := make(Omega, 0)
+	for i := 0; i < len((*r).drules); i++ {
+		omega = append(omega, <-c...)
+	}
+}
+
 // }}}
 
 // naive Datalog evaluation {{{
@@ -309,7 +324,7 @@ func eval(tbox *[]Rule, abox *[]Atom, lastDelta int, stats *Stats) []Atom {
 
 	// TODO parallel!
 	for _, r := range *tbox {
-		omega := r.eval(abox, lastDelta)
+		omega := r.evalPar(abox, lastDelta)
 		for _, mu := range omega {
 			// only add mu's that utilize a fact from the last delta,
 			// i.e. utilize a ground atom with an index >= lastDelta
