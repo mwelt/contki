@@ -1,4 +1,38 @@
+Baseline
+
+starting fixpoint calculation
+finished fixpoint calculation, took 10.446069217s
+final abox size: 7267 stats: {4269 11}
+starting fixpoint calculation
+finished fixpoint calculation, took 6.141129851s
+final abox size: 7558 stats: {4460 5}
+
+semiNaive:
+
+starting fixpoint calculation
+finished fixpoint calculation, took 1.66641145s
+final abox size: 7267 stats: {4269 11}
+starting fixpoint calculation
+finished fixpoint calculation, took 1.76481695s
+final abox size: 7558 stats: {4460 5}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 mit index:
+
 
 1000, 500
 starting naive Datalog evaluation

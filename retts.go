@@ -84,45 +84,6 @@ func (a1 *Atom) equalTo(a2 *Atom) bool {
 
 // }}}
 
-// Store {{{
-
-// type Node struct {
-// 	sPos, pPos, oPos []int
-// }
-
-// type Store struct {
-// 	abox  []Atom
-// 	index map[Constant]Node
-// }
-
-// func (s *Store) addAtom(a Atom) {
-// 	a.idx = len((*s).abox)
-// 	(*s).abox = append((*s).abox, a)
-
-// 	sNode, ok1 := (*s).index[a.s.(Constant)]
-// 	if !ok1 {
-// 		sNode = Node{}
-// 	}
-// 	sNode.sPos = append(sNode.sPos, a.idx)
-// 	(*s).index[a.s.(Constant)] = sNode
-
-// 	pNode, ok2 := (*s).index[a.p.(Constant)]
-// 	if !ok2 {
-// 		pNode = Node{}
-// 	}
-// 	pNode.pPos = append(pNode.pPos, a.idx)
-// 	(*s).index[a.p.(Constant)] = pNode
-
-// 	oNode, ok3 := (*s).index[a.o.(Constant)]
-// 	if !ok3 {
-// 		oNode = Node{}
-// 	}
-// 	oNode.oPos = append(oNode.oPos, a.idx)
-// 	(*s).index[a.o.(Constant)] = oNode
-// }
-
-// }}}
-
 // Mu / Omega {{{
 type MuMapping map[Variable]Term
 
@@ -142,6 +103,8 @@ func (m1 *Mu) compatible(m2 *Mu) bool {
 	return true
 }
 
+// TODO propagate lastDelta and remove mappings that do not adhere to
+// it
 // join joins two mu mappings together
 func (m1 *Mu) join(m2 *Mu) Mu {
 	m3 := make(MuMapping)
@@ -288,23 +251,25 @@ func (a1 *Atom) knownTo(abox *[]Atom) bool {
 // }}}
 
 // Rule {{{
-
-type Rule struct {
-	head, body []Atom
-	recursive  []bool
+type DeltaRule struct {
+	body []Atom
+	// in order to express a delta rule support a single deltaAtom,
+	// which will be fed only with data from the last delta
+	deltaAtom int
 }
 
-func (r *Rule) isFact() bool {
-	return len(r.body) == 0
+type Rule struct {
+	head   []Atom
+	drules []DeltaRule
 }
 
 // eval evaluates a rule w.r.t. to an abox, and returns a multiset omega
-func (r *Rule) eval(abox *[]Atom, lastDelta int) Omega {
+func (r *DeltaRule) eval(abox *[]Atom, lastDelta int) Omega {
+
 	omegas := make([]Omega, 0)
 
-	// TODO parallel?
 	for i, b := range (*r).body {
-		if (*r).recursive[i] {
+		if i == r.deltaAtom {
 			omegas = append(omegas, b.findMappings(abox, lastDelta))
 		} else {
 			omegas = append(omegas, b.findMappings(abox, 0))
@@ -313,14 +278,22 @@ func (r *Rule) eval(abox *[]Atom, lastDelta int) Omega {
 
 	result := omegas[0]
 
-	// start := time.Now()
 	for i := 1; i < len(omegas); i++ {
-		result = result.joinPar(&omegas[i])
+		result = result.join(&omegas[i])
 	}
-	// elapsed := time.Since(start)
-	// fmt.Println("join", elapsed)
 
 	return result
+
+}
+
+func (r *Rule) eval(abox *[]Atom, lastDelta int) Omega {
+	omega := make(Omega, 0)
+
+	for _, dr := range (*r).drules {
+		omega = append(omega, dr.eval(abox, lastDelta)...)
+	}
+
+	return omega
 }
 
 // }}}
@@ -346,17 +319,17 @@ func eval(tbox *[]Rule, abox *[]Atom, lastDelta int, stats *Stats) []Atom {
 		for _, mu := range omega {
 			// only add mu's that utilize a fact from the last delta,
 			// i.e. utilize a ground atom with an index >= lastDelta
-			if mu.idx >= lastDelta {
-				// apply mu to all head atoms of r
-				for _, headAtom := range r.head {
-					ga := headAtom.applyMapping(&mu)
-					stats.cmps += 1
-					if !ga.knownTo(abox) {
-						ga.idx = len(*abox) + len(delta)
-						delta = append(delta, ga)
-					}
+			// if mu.idx >= lastDelta {
+			// apply mu to all head atoms of r
+			for _, headAtom := range r.head {
+				ga := headAtom.applyMapping(&mu)
+				stats.cmps += 1
+				if !ga.knownTo(abox) && !ga.knownTo(&delta) {
+					ga.idx = len(*abox) + len(delta)
+					delta = append(delta, ga)
 				}
 			}
+			// }
 		}
 	}
 
@@ -364,31 +337,33 @@ func eval(tbox *[]Rule, abox *[]Atom, lastDelta int, stats *Stats) []Atom {
 
 }
 
-func naiveDatalog(tbox *[]Rule, abox *[]Atom) Stats {
+func fixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) (int, Stats) {
 
 	stats := Stats{0, 0}
-	lastDelta := 0
 	currDelta := len(*abox)
 
 	for lastDelta < currDelta {
+		fmt.Println("lastDelta:", lastDelta, "currDelta:", currDelta)
 		delta := eval(tbox, abox, lastDelta, &stats)
+		fmt.Println("len(delta):", len(delta))
 		*abox = append(*abox, delta...)
 		lastDelta = currDelta
 		currDelta = len(*abox)
 		stats.iters += 1
 	}
 
-	return stats
+	return currDelta, stats
 
 }
 
-func runNaiveDatalog(tbox *[]Rule, abox *[]Atom) {
-	fmt.Println("starting naive Datalog evaluation")
+func runFixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) int {
+	fmt.Println("starting fixpoint calculation")
 	start := time.Now()
-	stats1 := naiveDatalog(tbox, abox)
+	lastDelta, stats1 := fixpoint(tbox, abox, lastDelta)
 	elapsed := time.Since(start)
-	fmt.Println("finished naive Datalog evaluation, took", elapsed)
+	fmt.Println("finished fixpoint calculation, took", elapsed)
 	fmt.Println("final abox size:", len(*abox), "stats:", stats1)
+	return lastDelta
 }
 
 //
@@ -418,17 +393,31 @@ func testTransitiveClosure() {
 	r1 := Rule{
 		head: []Atom{
 			Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?y")}},
-		body: []Atom{
-			Atom{-1, Variable("?x"), Constant(":link"), Variable("?y")}},
-		recursive: []bool{false, false}}
+		drules: []DeltaRule{
+			DeltaRule{body: []Atom{
+				Atom{-1, Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: 0}}}
 
 	r2 := Rule{
 		head: []Atom{
 			Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?y")}},
-		body: []Atom{
-			Atom{-1, Variable("?x"), Constant(":link"), Variable("?z")},
-			Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}},
-		recursive: []bool{false, true}}
+		drules: []DeltaRule{
+			DeltaRule{body: []Atom{
+				// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+				Atom{-1, Variable("?x"), Constant(":link"), Variable("?z")},
+				Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
+			DeltaRule{body: []Atom{
+				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+				Atom{-1, Variable("?x"), Constant(":link"), Variable("?z")},
+				Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 1}}}
+
+	// r2d2 := Rule{
+	// 	head: []Atom{
+	// 		Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?y")}},
+	// 	body: []Atom{
+	// 		Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+	// 		// Atom{-1, Variable("?x"), Constant(":link"), Variable("?z")},
+	// 		Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}},
+	// 	deltaAtoms: 0}
 
 	tbox := []Rule{r1, r2}
 
@@ -441,8 +430,12 @@ func testTransitiveClosure() {
 
 	abox := genRngGraph(10000, 3000)
 
-	runNaiveDatalog(&tbox, &abox)
-	runNaiveDatalog(&tbox, &abox)
+	lastDelta := runFixpoint(&tbox, &abox, 0)
+
+	newAbox := genRngGraph(10000, 100)
+	abox = append(abox, newAbox...)
+
+	runFixpoint(&tbox, &abox, lastDelta)
 }
 
 // }}}
@@ -450,6 +443,7 @@ func testTransitiveClosure() {
 // main {{{
 
 func main() {
+	testTransitiveClosure()
 
 }
 
