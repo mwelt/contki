@@ -1,3 +1,3 @@
-module example.com/retts
+module example.com/contki
 
 go 1.16

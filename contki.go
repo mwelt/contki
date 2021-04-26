@@ -303,6 +303,8 @@ func (r *Rule) evalPar(abox *[]Atom, lastDelta int) Omega {
 	for i := 0; i < len((*r).drules); i++ {
 		omega = append(omega, <-c...)
 	}
+
+	return omega
 }
 
 // }}}
@@ -324,7 +326,7 @@ func eval(tbox *[]Rule, abox *[]Atom, lastDelta int, stats *Stats) []Atom {
 
 	// TODO parallel!
 	for _, r := range *tbox {
-		omega := r.evalPar(abox, lastDelta)
+		omega := r.eval(abox, lastDelta)
 		for _, mu := range omega {
 			// only add mu's that utilize a fact from the last delta,
 			// i.e. utilize a ground atom with an index >= lastDelta
@@ -343,7 +345,7 @@ func eval(tbox *[]Rule, abox *[]Atom, lastDelta int, stats *Stats) []Atom {
 
 }
 
-func fixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) (int, Stats) {
+func fixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) int {
 
 	stats := Stats{0, 0}
 	currDelta := len(*abox)
@@ -356,17 +358,17 @@ func fixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) (int, Stats) {
 		stats.iters += 1
 	}
 
-	return currDelta, stats
+	return currDelta
 
 }
 
 func runFixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) int {
-	fmt.Println("starting fixpoint calculation")
-	start := time.Now()
-	lastDelta, stats1 := fixpoint(tbox, abox, lastDelta)
-	elapsed := time.Since(start)
-	fmt.Println("finished fixpoint calculation, took", elapsed)
-	fmt.Println("final abox size:", len(*abox), "stats:", stats1)
+	// fmt.Println("starting fixpoint calculation")
+	// start := time.Now()
+	lastDelta = fixpoint(tbox, abox, lastDelta)
+	// elapsed := time.Since(start)
+	// fmt.Println("finished fixpoint calculation, took", elapsed)
+	// fmt.Println("final abox size:", len(*abox), "stats:", stats1)
 	return lastDelta
 }
 
@@ -392,8 +394,90 @@ func genRngGraph(numNodes, numAtoms int) []Atom {
 	return abox
 }
 
-func testTransitiveClosure() {
-	// TBox
+func runNaiveDatalog(abox, aboxExt []Atom) time.Duration {
+
+	r1 := Rule{
+		head: []Atom{
+			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+		drules: []DeltaRule{
+			DeltaRule{body: []Atom{
+				Atom{Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: -1}}}
+
+	r2 := Rule{
+		head: []Atom{
+			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+		drules: []DeltaRule{
+			// DeltaRule{body: []Atom{
+			// 	// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+			// 	Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+			// 	Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
+			DeltaRule{body: []Atom{
+				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: -1}}}
+
+	tbox := []Rule{r1, r2}
+
+	lastDelta := runFixpoint(&tbox, &abox, 0)
+	stackPointer := lastDelta
+
+	start := time.Now()
+	abox = append(abox, aboxExt...)
+	runFixpoint(&tbox, &abox, 0)
+
+	// revert
+	abox = abox[:stackPointer]
+	// fmt.Println("after revert len(abox)", len(abox))
+
+	abox = append(abox, aboxExt...)
+	lastDelta = runFixpoint(&tbox, &abox, 0)
+
+	return time.Since(start)
+}
+
+func runSemiNaiveDatalog(abox, aboxExt []Atom) time.Duration {
+
+	r1 := Rule{
+		head: []Atom{
+			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+		drules: []DeltaRule{
+			DeltaRule{body: []Atom{
+				Atom{Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: -1}}}
+
+	r2 := Rule{
+		head: []Atom{
+			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+		drules: []DeltaRule{
+			// DeltaRule{body: []Atom{
+			// 	// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+			// 	Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+			// 	Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
+			DeltaRule{body: []Atom{
+				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 1}}}
+
+	tbox := []Rule{r1, r2}
+
+	lastDelta := runFixpoint(&tbox, &abox, 0)
+	stackPointer := lastDelta
+
+	start := time.Now()
+	abox = append(abox, aboxExt...)
+	runFixpoint(&tbox, &abox, 0)
+
+	// revert
+	abox = abox[:stackPointer]
+	// fmt.Println("after revert len(abox)", len(abox))
+
+	abox = append(abox, aboxExt...)
+	lastDelta = runFixpoint(&tbox, &abox, 0)
+
+	return time.Since(start)
+}
+
+func runSemiNaiveDatalogExt(abox, aboxExt []Atom) time.Duration {
+
 	r1 := Rule{
 		head: []Atom{
 			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
@@ -414,29 +498,12 @@ func testTransitiveClosure() {
 				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
 				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 1}}}
 
-	// r2d2 := Rule{
-	// 	head: []Atom{
-	// 		Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?y")}},
-	// 	body: []Atom{
-	// 		Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-	// 		// Atom{-1, Variable("?x"), Constant(":link"), Variable("?z")},
-	// 		Atom{-1, Variable("?z"), Constant(":reachable"), Variable("?y")}},
-	// 	deltaAtoms: 0}
-
 	tbox := []Rule{r1, r2}
-
-	// ABox
-	// abox := []Atom{
-	// 	Atom{0, Constant(":a"), Constant(":link"), Constant(":b")},
-	// 	Atom{1, Constant(":b"), Constant(":link"), Constant(":c")},
-	// 	Atom{2, Constant(":c"), Constant(":link"), Constant(":d")},
-	// 	Atom{3, Constant(":c"), Constant(":link"), Constant(":c")}}
-
-	abox := genRngGraph(10000, 3000)
-	aboxExt := genRngGraph(10000, 100)
 
 	lastDelta := runFixpoint(&tbox, &abox, 0)
 	stackPointer := lastDelta
+
+	start := time.Now()
 
 	abox = append(abox, aboxExt...)
 	lastDelta = runFixpoint(&tbox, &abox, lastDelta)
@@ -444,10 +511,62 @@ func testTransitiveClosure() {
 	// revert
 	abox = abox[:stackPointer]
 	lastDelta = stackPointer
-	fmt.Println("after revert len(abox)", len(abox))
+	// fmt.Println("after revert len(abox)", len(abox))
 
 	abox = append(abox, aboxExt...)
 	lastDelta = runFixpoint(&tbox, &abox, lastDelta)
+
+	return time.Since(start)
+}
+
+func testTransitiveClosure() {
+
+	S := 30
+	T := 500
+	inc := 5
+	N := 10
+
+	c1 := make(chan time.Duration)
+	c2 := make(chan time.Duration)
+	c3 := make(chan time.Duration)
+
+	for i := S; i <= T; i += inc {
+
+		s1 := int64(0)
+		s2 := int64(0)
+		s3 := int64(0)
+
+		nNodes := 10000
+		nEdges := 2000
+		nEdgesExt := i
+
+		for j := 0; j < N; j++ {
+
+			abox := genRngGraph(nNodes, nEdges+nEdgesExt)
+			aboxExt := abox[:nEdgesExt]
+			abox = abox[nEdgesExt:]
+
+			go func() {
+				c1 <- runNaiveDatalog(abox, aboxExt)
+			}()
+
+			go func() {
+				c2 <- runSemiNaiveDatalog(abox, aboxExt)
+			}()
+
+			go func() {
+				c3 <- runSemiNaiveDatalogExt(abox, aboxExt)
+			}()
+
+			s1 = int64(<-c1 / time.Millisecond)
+			s2 = int64(<-c2 / time.Millisecond)
+			s3 = int64(<-c3 / time.Millisecond)
+
+		}
+
+		fmt.Println(nNodes, ",", nEdges, ",", nEdgesExt, ",", s1/int64(N), ",", s2/int64(N), ",", s3/int64(N))
+	}
+
 }
 
 // }}}
