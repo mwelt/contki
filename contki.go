@@ -505,6 +505,9 @@ func runDRed(tbox, abox, aboxExt []Atom) time.Duration {
 	// 1. calculate over-estimate
 	runFixpoint(&tbox, &aboxExt, 0)
 
+	// 2. calculate the under-estimate
+	runFixpoint(&tbox, &aboxExt, 0)
+
 }
 
 func runCommitRevert(tbox, abox, aboxExt []Atom) time.Duration {
