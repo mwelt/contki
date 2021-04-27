@@ -23,31 +23,31 @@ func max(x, y int) int {
 type Constant string
 type Variable string
 
-type Literal interface {
-	getLiteralType() uint8
-}
+// type Literal interface {
+// 	getLiteralType() uint8
+// }
 
-const (
-	LONG   = iota
-	DOUBLE = iota
-	STRING = iota
-	ARRAY  = iota
-)
+// const (
+// 	LONG   = iota
+// 	DOUBLE = iota
+// 	STRING = iota
+// 	ARRAY  = iota
+// )
 
-type Long uint64
-type Double uint64
-type String string
-type Array []Literal
+// type Long uint64
+// type Double uint64
+// type String string
+// type Array []Literal
 
-func (l Long) getLiteralType() uint8   { return LONG }
-func (d Double) getLiteralType() uint8 { return DOUBLE }
-func (s String) getLiteralType() uint8 { return STRING }
-func (a Array) getLiteralType() uint8  { return ARRAY }
+// func (l Long) getLiteralType() uint8   { return LONG }
+// func (d Double) getLiteralType() uint8 { return DOUBLE }
+// func (s String) getLiteralType() uint8 { return STRING }
+// func (a Array) getLiteralType() uint8  { return ARRAY }
 
 const (
 	CONSTANT = iota
 	VARIABLE = iota
-	LITERAL  = iota
+	// LITERAL  = iota
 )
 
 type Term interface {
@@ -56,14 +56,16 @@ type Term interface {
 
 func (c Constant) getTermType() uint8 { return CONSTANT }
 func (v Variable) getTermType() uint8 { return VARIABLE }
-func (l Long) getTermType() uint8     { return LITERAL }
-func (l Double) getTermType() uint8   { return LITERAL }
-func (l String) getTermType() uint8   { return LITERAL }
-func (l Array) getTermType() uint8    { return LITERAL }
+
+// func (l Long) getTermType() uint8     { return LITERAL }
+// func (l Double) getTermType() uint8   { return LITERAL }
+// func (l String) getTermType() uint8   { return LITERAL }
+// func (l Array) getTermType() uint8    { return LITERAL }
 
 func isConstant(t Term) bool { return t.getTermType() == CONSTANT }
 func isVariable(t Term) bool { return t.getTermType() == VARIABLE }
-func isLiteral(t Term) bool  { return t.getTermType() == LITERAL }
+
+// func isLiteral(t Term) bool  { return t.getTermType() == LITERAL }
 
 type Atom struct {
 	s, p, o Term
@@ -244,17 +246,37 @@ func (a1 *Atom) knownTo(abox *[]Atom) bool {
 
 // }}}
 
+type Program struct {
+	rules []Rule
+	idb   []Constant
+	edb   []Constant
+}
+
 // Rule {{{
 type DeltaRule struct {
-	body []Atom
-	// in order to express a delta rule support a single deltaAtom,
-	// which will be fed only with data from the last delta
-	deltaAtom int
+	body  []Atom
+	delta Atom
 }
 
 type Rule struct {
 	head   []Atom
+	body   []Atom
 	drules []DeltaRule
+}
+
+func (r *Rule) mkDeltaRules() {
+	(*r).drules = make([]DeltaRule, 0, len(r.body))
+
+	for i, a := range (*r).body {
+		dr := DeltaRule{body: make([]Atom, 0, len(r.body)-1), delta: a}
+		for j := 0; j < i; j++ {
+			dr.body = append(dr.body, (*r).body[j])
+		}
+		for j := i + 1; j < len((*r).body); j++ {
+			dr.body = append(dr.body, (*r).body[j])
+		}
+		(*r).drules = append((*r).drules, dr)
+	}
 }
 
 // eval evaluates a rule w.r.t. to an abox, and returns a multiset omega
@@ -262,12 +284,9 @@ func (r *DeltaRule) eval(abox *[]Atom, lastDelta int) Omega {
 
 	omegas := make([]Omega, 0)
 
-	for i, b := range (*r).body {
-		if i == r.deltaAtom {
-			omegas = append(omegas, b.findMappings(abox, lastDelta))
-		} else {
-			omegas = append(omegas, b.findMappings(abox, 0))
-		}
+	omegas = append(omegas, (*r).delta.findMappings(abox, lastDelta))
+	for _, b := range (*r).body {
+		omegas = append(omegas, b.findMappings(abox, 0))
 	}
 
 	result := omegas[0]
@@ -363,11 +382,11 @@ func fixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) int {
 }
 
 func runFixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) int {
-	// fmt.Println("starting fixpoint calculation")
-	// start := time.Now()
+	fmt.Println("starting fixpoint calculation")
+	start := time.Now()
 	lastDelta = fixpoint(tbox, abox, lastDelta)
-	// elapsed := time.Since(start)
-	// fmt.Println("finished fixpoint calculation, took", elapsed)
+	elapsed := time.Since(start)
+	fmt.Println("finished fixpoint calculation, took", elapsed)
 	// fmt.Println("final abox size:", len(*abox), "stats:", stats1)
 	return lastDelta
 }
@@ -394,111 +413,101 @@ func genRngGraph(numNodes, numAtoms int) []Atom {
 	return abox
 }
 
-func runNaiveDatalog(abox, aboxExt []Atom) time.Duration {
+// func runNaiveDatalog(abox, aboxExt []Atom) time.Duration {
 
-	r1 := Rule{
-		head: []Atom{
-			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
-		drules: []DeltaRule{
-			DeltaRule{body: []Atom{
-				Atom{Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: -1}}}
+// 	r1 := Rule{
+// 		head: []Atom{
+// 			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+// 		drules: []DeltaRule{
+// 			DeltaRule{body: []Atom{
+// 				Atom{Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: -1}}}
 
-	r2 := Rule{
-		head: []Atom{
-			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
-		drules: []DeltaRule{
-			// DeltaRule{body: []Atom{
-			// 	// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-			// 	Atom{Variable("?x"), Constant(":link"), Variable("?z")},
-			// 	Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
-			DeltaRule{body: []Atom{
-				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
-				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: -1}}}
+// 	r2 := Rule{
+// 		head: []Atom{
+// 			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+// 		drules: []DeltaRule{
+// 			// DeltaRule{body: []Atom{
+// 			// 	// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+// 			// 	Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+// 			// 	Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
+// 			DeltaRule{body: []Atom{
+// 				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+// 				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+// 				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: -1}}}
 
-	tbox := []Rule{r1, r2}
+// 	tbox := []Rule{r1, r2}
 
-	lastDelta := runFixpoint(&tbox, &abox, 0)
-	stackPointer := lastDelta
+// 	lastDelta := runFixpoint(&tbox, &abox, 0)
+// 	stackPointer := lastDelta
 
-	start := time.Now()
-	abox = append(abox, aboxExt...)
+// 	start := time.Now()
+// 	abox = append(abox, aboxExt...)
+// 	runFixpoint(&tbox, &abox, 0)
+
+// 	// revert
+// 	abox = abox[:stackPointer]
+// 	// fmt.Println("after revert len(abox)", len(abox))
+
+// 	abox = append(abox, aboxExt...)
+// 	lastDelta = runFixpoint(&tbox, &abox, 0)
+
+// 	return time.Since(start)
+// }
+
+// func runSemiNaiveDatalog(abox, aboxExt []Atom) time.Duration {
+
+// 	r1 := Rule{
+// 		head: []Atom{
+// 			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+// 		drules: []DeltaRule{
+// 			DeltaRule{body: []Atom{
+// 				Atom{Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: -1}}}
+
+// 	r2 := Rule{
+// 		head: []Atom{
+// 			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+// 		drules: []DeltaRule{
+// 			// DeltaRule{body: []Atom{
+// 			// 	// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+// 			// 	Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+// 			// 	Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
+// 			DeltaRule{body: []Atom{
+// 				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
+// 				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+// 				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 1}}}
+
+// 	tbox := []Rule{r1, r2}
+
+// 	lastDelta := runFixpoint(&tbox, &abox, 0)
+// 	stackPointer := lastDelta
+
+// 	start := time.Now()
+// 	abox = append(abox, aboxExt...)
+// 	runFixpoint(&tbox, &abox, 0)
+
+// 	// revert
+// 	abox = abox[:stackPointer]
+// 	// fmt.Println("after revert len(abox)", len(abox))
+
+// 	abox = append(abox, aboxExt...)
+// 	lastDelta = runFixpoint(&tbox, &abox, 0)
+
+// 	return time.Since(start)
+// }
+
+func runDRed(tbox, abox, aboxExt []Atom) time.Duration {
 	runFixpoint(&tbox, &abox, 0)
+	abox = append(abox, aboxExt)
 
-	// revert
-	abox = abox[:stackPointer]
-	// fmt.Println("after revert len(abox)", len(abox))
+	// 3. in DRed (no deletions)
+	runFixpoint(&tbox, &abox, lastDelta)
 
-	abox = append(abox, aboxExt...)
-	lastDelta = runFixpoint(&tbox, &abox, 0)
+	// 1. calculate over-estimate
+	runFixpoint(&tbox, &aboxExt, 0)
 
-	return time.Since(start)
 }
 
-func runSemiNaiveDatalog(abox, aboxExt []Atom) time.Duration {
-
-	r1 := Rule{
-		head: []Atom{
-			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
-		drules: []DeltaRule{
-			DeltaRule{body: []Atom{
-				Atom{Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: -1}}}
-
-	r2 := Rule{
-		head: []Atom{
-			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
-		drules: []DeltaRule{
-			// DeltaRule{body: []Atom{
-			// 	// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-			// 	Atom{Variable("?x"), Constant(":link"), Variable("?z")},
-			// 	Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
-			DeltaRule{body: []Atom{
-				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
-				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 1}}}
-
-	tbox := []Rule{r1, r2}
-
-	lastDelta := runFixpoint(&tbox, &abox, 0)
-	stackPointer := lastDelta
-
-	start := time.Now()
-	abox = append(abox, aboxExt...)
-	runFixpoint(&tbox, &abox, 0)
-
-	// revert
-	abox = abox[:stackPointer]
-	// fmt.Println("after revert len(abox)", len(abox))
-
-	abox = append(abox, aboxExt...)
-	lastDelta = runFixpoint(&tbox, &abox, 0)
-
-	return time.Since(start)
-}
-
-func runSemiNaiveDatalogExt(abox, aboxExt []Atom) time.Duration {
-
-	r1 := Rule{
-		head: []Atom{
-			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
-		drules: []DeltaRule{
-			DeltaRule{body: []Atom{
-				Atom{Variable("?x"), Constant(":link"), Variable("?y")}}, deltaAtom: 0}}}
-
-	r2 := Rule{
-		head: []Atom{
-			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
-		drules: []DeltaRule{
-			DeltaRule{body: []Atom{
-				// 	Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
-				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 0},
-			DeltaRule{body: []Atom{
-				// Atom{-1, Variable("?x"), Constant(":reachable"), Variable("?z")},
-				Atom{Variable("?x"), Constant(":link"), Variable("?z")},
-				Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}, deltaAtom: 1}}}
-
-	tbox := []Rule{r1, r2}
+func runCommitRevert(tbox, abox, aboxExt []Atom) time.Duration {
 
 	lastDelta := runFixpoint(&tbox, &abox, 0)
 	stackPointer := lastDelta
@@ -511,7 +520,7 @@ func runSemiNaiveDatalogExt(abox, aboxExt []Atom) time.Duration {
 	// revert
 	abox = abox[:stackPointer]
 	lastDelta = stackPointer
-	// fmt.Println("after revert len(abox)", len(abox))
+	fmt.Println("after revert len(abox)", len(abox))
 
 	abox = append(abox, aboxExt...)
 	lastDelta = runFixpoint(&tbox, &abox, lastDelta)
@@ -519,63 +528,92 @@ func runSemiNaiveDatalogExt(abox, aboxExt []Atom) time.Duration {
 	return time.Since(start)
 }
 
-func testTransitiveClosure() {
+// func testTransitiveClosure() {
 
-	S := 30
-	T := 500
-	inc := 5
-	N := 10
+// 	S := 30
+// 	T := 500
+// 	inc := 5
+// 	N := 10
 
-	c1 := make(chan time.Duration)
-	c2 := make(chan time.Duration)
-	c3 := make(chan time.Duration)
+// 	c1 := make(chan time.Duration)
+// 	c2 := make(chan time.Duration)
+// 	c3 := make(chan time.Duration)
 
-	for i := S; i <= T; i += inc {
+// 	for i := S; i <= T; i += inc {
 
-		s1 := int64(0)
-		s2 := int64(0)
-		s3 := int64(0)
+// 		s1 := int64(0)
+// 		s2 := int64(0)
+// 		s3 := int64(0)
 
-		nNodes := 10000
-		nEdges := 2000
-		nEdgesExt := i
+// 		nNodes := 10000
+// 		nEdges := 2000
+// 		nEdgesExt := i
 
-		for j := 0; j < N; j++ {
+// 		for j := 0; j < N; j++ {
 
-			abox := genRngGraph(nNodes, nEdges+nEdgesExt)
-			aboxExt := abox[:nEdgesExt]
-			abox = abox[nEdgesExt:]
+// 			abox := genRngGraph(nNodes, nEdges+nEdgesExt)
+// 			aboxExt := abox[:nEdgesExt]
+// 			abox = abox[nEdgesExt:]
 
-			go func() {
-				c1 <- runNaiveDatalog(abox, aboxExt)
-			}()
+// 			go func() {
+// 				c1 <- runNaiveDatalog(abox, aboxExt)
+// 			}()
 
-			go func() {
-				c2 <- runSemiNaiveDatalog(abox, aboxExt)
-			}()
+// 			go func() {
+// 				c2 <- runSemiNaiveDatalog(abox, aboxExt)
+// 			}()
 
-			go func() {
-				c3 <- runSemiNaiveDatalogExt(abox, aboxExt)
-			}()
+// 			go func() {
+// 				c3 <- runSemiNaiveDatalogExt(abox, aboxExt)
+// 			}()
 
-			s1 = int64(<-c1 / time.Millisecond)
-			s2 = int64(<-c2 / time.Millisecond)
-			s3 = int64(<-c3 / time.Millisecond)
+// 			s1 = int64(<-c1 / time.Millisecond)
+// 			s2 = int64(<-c2 / time.Millisecond)
+// 			s3 = int64(<-c3 / time.Millisecond)
 
-		}
+// 		}
 
-		fmt.Println(nNodes, ",", nEdges, ",", nEdgesExt, ",", s1/int64(N), ",", s2/int64(N), ",", s3/int64(N))
-	}
+// 		fmt.Println(nNodes, ",", nEdges, ",", nEdgesExt, ",", s1/int64(N), ",", s2/int64(N), ",", s3/int64(N))
+// 	}
 
-}
+// }
 
 // }}}
 
 // main {{{
 
 func main() {
-	testTransitiveClosure()
+	// testTransitiveClosure()
 
+	r1 := Rule{
+		head: []Atom{
+			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+		body: []Atom{
+			Atom{Variable("?x"), Constant(":link"), Variable("?y")}}}
+
+	r1.mkDeltaRules()
+
+	r2 := Rule{
+		head: []Atom{
+			Atom{Variable("?x"), Constant(":reachable"), Variable("?y")}},
+		body: []Atom{
+			Atom{Variable("?x"), Constant(":link"), Variable("?z")},
+			Atom{Variable("?z"), Constant(":reachable"), Variable("?y")}}}
+
+	r2.mkDeltaRules()
+
+	tbox := []Rule{r1, r2}
+
+	nNodes := 10000
+	nEdges := 3000
+	nEdgesExt := 300
+
+	abox := genRngGraph(nNodes, nEdges+nEdgesExt)
+	aboxExt := abox[:nEdgesExt]
+	abox = abox[nEdgesExt:]
+
+	runDRed(tbox, abox, aboxExt)
+	runCommitRevert(tbox, abox, aboxExt)
 }
 
 // }}}
