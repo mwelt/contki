@@ -284,9 +284,11 @@ func (r *DeltaRule) eval(abox, delta *[]Atom) Omega {
 	omegas := make([]Omega, 0)
 
 	omegas = append(omegas, (*r).delta.findMappings(delta))
+	fmt.Println("delta-omega:", omegas)
 	for _, b := range (*r).body {
 		omegas = append(omegas, b.findMappings(abox))
 	}
+	fmt.Println("rest-omega:", omegas)
 
 	result := omegas[0]
 
@@ -354,7 +356,20 @@ func eval(tbox *[]Rule, abox, delta *[]Atom) []Atom {
 
 }
 
-func negEval(tbox *[]Rule, abox, delta *[]Atom) []Atom {
+func fixpoint(tbox *[]Rule, abox, startDelta *[]Atom) {
+
+	delta := *startDelta
+
+	for len(delta) > 0 {
+		delta = eval(tbox, abox, &delta)
+		*abox = append(*abox, delta...)
+	}
+
+}
+
+// DRed {{{
+
+func overEstimateEval(tbox *[]Rule, abox, delta, toDelete *[]Atom) []Atom {
 
 	delta_ := make([]Atom, 0)
 
@@ -364,7 +379,7 @@ func negEval(tbox *[]Rule, abox, delta *[]Atom) []Atom {
 		for _, mu := range omega {
 			for _, headAtom := range r.head {
 				ga := headAtom.applyMapping(&mu)
-				if !ga.knownTo(delta) && !ga.knownTo(&delta_) {
+				if !ga.knownTo(toDelete) && !ga.knownTo(&delta_) {
 					delta_ = append(delta_, ga)
 				}
 			}
@@ -375,50 +390,156 @@ func negEval(tbox *[]Rule, abox, delta *[]Atom) []Atom {
 
 }
 
-func negFixpoint(tbox *[]Rule, abox, delta *[]Atom) {
-	lLen := 0
-	cLen := len(*delta)
+func overEstimateFixpoint(tbox *[]Rule, abox, toDelete *[]Atom) {
+	delta := *toDelete
 
-	for lLen < cLen {
-		*delta = append(*delta, negEval(tbox, abox, delta)...)
-		lLen = cLen
-		cLen = len(*delta)
+	for len(delta) > 0 {
+		delta = overEstimateEval(tbox, abox, &delta, toDelete)
+		*toDelete = append(*toDelete, delta...)
 	}
 }
 
-func fixpoint(tbox *[]Rule, abox, startDelta *[]Atom) {
+func evalAltDerivations(tbox *[]Rule, abox_v, delta *[]Atom) []Atom {
 
-	cLen := len(*abox)
-	lLen := 0
-	delta := *startDelta
+	delta_ := make([]Atom, 0)
 
-	for lLen < cLen {
-		delta = eval(tbox, abox, &delta)
-		*abox = append(*abox, delta...)
-		lLen = cLen
-		cLen = len(*abox)
+	// TODO parallel!
+	for _, r := range *tbox {
+
+		// now explicitly eval every delta rule
+		for _, dr := range r.drules {
+			fmt.Println("modified delta-rule:")
+			fmt.Println(dr)
+			omega := dr.eval(abox_v, delta)
+			fmt.Println(omega)
+			// and instead of using the rule's head use the
+			// deltaAtom instead for creating the new ground atom
+			for _, mu := range omega {
+				ga := dr.delta.applyMapping(&mu)
+				if !ga.knownTo(abox_v) && !ga.knownTo(&delta_) {
+					delta_ = append(delta_, ga)
+				}
+			}
+		}
+
 	}
+
+	return delta_
 
 }
 
-func runNegFixpoint(tbox *[]Rule, abox, delta *[]Atom) {
-	fmt.Println("starting negative fixpoint calculation")
-	fmt.Println("starting delta size:", len(*delta))
-	start := time.Now()
-	negFixpoint(tbox, abox, delta)
-	elapsed := time.Since(start)
-	fmt.Println("finished negative fixpoint calculation, took", elapsed)
-	fmt.Println("final delta size:", len(*delta))
+func altDerivationsFixpoint(tbox *[]Rule, abox_v, toDelete *[]Atom) {
+	// modify delta rules
+	tbox_ := make([]Rule, 0, len(*tbox))
+
+	for _, r := range *tbox {
+		drules_ := make([]DeltaRule, 0, len(r.drules))
+		for _, dr := range r.drules {
+			// add the deltaAtom back to the rule body, this way it's
+			// evaluated twice one with abox_v and one with delta^-
+			dr.body = append(dr.body, dr.delta)
+			drules_ = append(drules_, dr)
+		}
+		r.drules = drules_
+		tbox_ = append(tbox_, r)
+	}
+
+	// for _, r := range tbox_ {
+	// 	fmt.Println(r)
+	// }
+
+	delta := *toDelete
+	for len(delta) > 0 {
+		delta = evalAltDerivations(&tbox_, abox_v, &delta)
+		*abox_v = append(*abox_v, delta...)
+	}
+	// cLen := len(*abox_v)
+	// lLen := 0
+
+	// for lLen < cLen {
+	// 	delta := evalAltDerivations(tbox, abox_v, toDelete)
+	// 	*abox_v = append(*abox_v, delta...)
+	// 	lLen = cLen
+	// 	cLen = len(*abox_v)
+	// }
+}
+
+func dRed(tbox *[]Rule, abox, toDelete *[]Atom) {
+	// fmt.Println("starting fixpoint calculation of over-estimates")
+	// fmt.Println("starting toDelete size:", len(*toDelete))
+
+	// start := time.Now()
+
+	// fmt.Println("start over-estimate (", len(*toDelete), "):")
+	// toDeleteOrig := *toDelete
+
+	// calculate over-estimate
+	overEstimateFixpoint(tbox, abox, toDelete)
+
+	fmt.Println("over-estimate (", len(*toDelete), "):")
+	// printAbox(toDelete)
+
+	// we have to remove the original EDB which have been deleted
+	// toDeleteNow := make([]Atom, 0, len(*toDelete)-len(toDeleteOrig))
+	// for _, a := range *toDelete {
+	// 	if !a.knownTo(&toDeleteOrig) {
+	// 		toDeleteNow = append(toDeleteNow, a)
+	// 	}
+	// }
+
+	// fmt.Println("over-estimate after clearing initial toDelete:")
+	// printAbox(&toDeleteNow)
+
+	// fmt.Println("finished fixpoint calculation of over-estimates, took", time.Since(start))
+	// fmt.Println("final toDelete size:", len(*toDelete))
+
+	// now remove the over-estimate from abox
+	abox_v := make([]Atom, 0)
+	for _, a := range *abox {
+		if !a.knownTo(toDelete) {
+			abox_v = append(abox_v, a)
+		}
+	}
+
+	// fmt.Println("abox after removal of over-estimate (", len(abox_v), "):")
+	// printAbox(&abox_v)
+
+	// // now put back the atoms with alternative derivations
+
+	// fmt.Println("starting fixpoint calculation of alt derivations")
+	// fmt.Println("starting abox_v size:", len(abox_v))
+
+	// start = time.Now()
+
+	altDerivationsFixpoint(tbox, &abox_v, toDelete)
+
+	// fmt.Println("abox after adding alternative derivations (", len(abox_v), "):")
+	// printAbox(&abox_v)
+
+	// fmt.Println("finished fixpoint calculation of alt derivations, took", time.Since(start))
+	// fmt.Println("final abox_v size:", len(abox_v))
+
+	// fmt.Println("starting fixpoint calculation for new derivations")
+	// fmt.Println("starting abox size:", len(abox_v))
+
+	// abox_v = append(abox_v, *toAdd...)
+	// start = time.Now()
+	// runFixpoint(tbox, &abox_v, toAdd)
+
+	// fmt.Println("finished fixpoint calculation of new derivations, took", time.Since(start))
+	// fmt.Println("final abox size:", len(abox_v))
+
+	*abox = abox_v
 }
 
 func runFixpoint(tbox *[]Rule, abox, startDelta *[]Atom) {
-	fmt.Println("starting fixpoint calculation")
-	fmt.Println("starting abox size:", len(*abox))
-	start := time.Now()
+	// fmt.Println("starting fixpoint calculation")
+	// fmt.Println("starting abox size:", len(*abox))
+	// start := time.Now()
 	fixpoint(tbox, abox, startDelta)
-	elapsed := time.Since(start)
-	fmt.Println("finished fixpoint calculation, took", elapsed)
-	fmt.Println("final abox size:", len(*abox))
+	// elapsed := time.Since(start)
+	// fmt.Println("finished fixpoint calculation, took", elapsed)
+	// fmt.Println("final abox size:", len(*abox))
 }
 
 //
@@ -524,30 +645,35 @@ func genRngGraph(numNodes, numAtoms int) []Atom {
 
 // 	return time.Since(start)
 // }
+func printAbox(abox *[]Atom) {
+	for _, a := range *abox {
+		fmt.Println(a)
+	}
+}
 
 func runDRed(tbox []Rule, abox, aboxExt []Atom) time.Duration {
 
 	runFixpoint(&tbox, &abox, &abox)
-	l := len(abox)
+
+	// fmt.Println("fully materialized abox (", len(abox), "):")
+	// printAbox(&abox)
+
 	abox = append(abox, aboxExt...)
-
-	fmt.Println(abox)
-
-	// 3. in DRed (no deletions)
 	runFixpoint(&tbox, &abox, &aboxExt)
 
-	fmt.Println(abox[l:])
+	// fmt.Println("fully materialized abox after extension (", len(abox), "):")
+	// printAbox(&abox)
 
 	start := time.Now()
-	delAtoms := aboxExt
 
-	// 1. calculate over-estimate
-	runNegFixpoint(&tbox, &abox, &delAtoms)
+	// do dRed step (1) and (2)
+	dRed(&tbox, &abox, &aboxExt)
 
-	fmt.Println(delAtoms)
+	fmt.Println("after dRed (1) (2) len(abox)", len(abox))
+	printAbox(&abox)
 
-	// 2. calculate the under-estimate
-	// runFixpoint(&tbox, &aboxExt, )
+	abox = append(abox, aboxExt...)
+	runFixpoint(&tbox, &abox, &aboxExt)
 
 	return time.Since(start)
 
@@ -567,6 +693,7 @@ func runCommitRevert(tbox []Rule, abox, aboxExt []Atom) time.Duration {
 	abox = abox[:stackPointer]
 
 	fmt.Println("after revert len(abox)", len(abox))
+	printAbox(&abox)
 
 	abox = append(abox, aboxExt...)
 	runFixpoint(&tbox, &abox, &aboxExt)
@@ -650,16 +777,29 @@ func main() {
 
 	tbox := []Rule{r1, r2}
 
-	nNodes := 10
-	nEdges := 5
-	nEdgesExt := 3
+	// nNodes := 10
+	// nEdges := 5
+	// nEdgesExt := 3
 
-	abox := genRngGraph(nNodes, nEdges+nEdgesExt)
-	aboxExt := abox[:nEdgesExt]
-	abox = abox[nEdgesExt:]
+	// abox := genRngGraph(nNodes, nEdges+nEdgesExt)
+	// aboxExt := abox[:nEdgesExt]
+	// abox = abox[nEdgesExt:]
+
+	abox := []Atom{
+		Atom{Constant(":a"), Constant(":link"), Constant(":b")},
+		Atom{Constant(":b"), Constant(":link"), Constant(":c")},
+		Atom{Constant(":c"), Constant(":link"), Constant(":d")},
+	}
+
+	fmt.Println("start abox (", len(abox), "):")
+	printAbox(&abox)
+
+	aboxExt := []Atom{
+		Atom{Constant(":c"), Constant(":link"), Constant(":c")},
+	}
 
 	runDRed(tbox, abox, aboxExt)
-	// runCommitRevert(tbox, abox, aboxExt)
+	runCommitRevert(tbox, abox, aboxExt)
 
 }
 
