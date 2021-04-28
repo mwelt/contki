@@ -219,12 +219,11 @@ func (a *Atom) applyMapping(mu *Mu) Atom {
 
 // findMappings finds all mappings in an abox (i.e. list of ground
 // atoms) corresponding to graph pattern bgp
-func (bgp *Atom) findMappings(abox *[]Atom, lastDelta int) Omega {
+func (bgp *Atom) findMappings(abox *[]Atom) Omega {
 	omega := make(Omega, 0, 100)
 
 	// TODO use index structure
-	for i := lastDelta; i < len(*abox); i++ {
-		a := (*abox)[i]
+	for _, a := range *abox {
 		if bgp.matches(&a) {
 			omega = append(omega, bgp.toMu(&a))
 		}
@@ -280,13 +279,13 @@ func (r *Rule) mkDeltaRules() {
 }
 
 // eval evaluates a rule w.r.t. to an abox, and returns a multiset omega
-func (r *DeltaRule) eval(abox *[]Atom, lastDelta int) Omega {
+func (r *DeltaRule) eval(abox, delta *[]Atom) Omega {
 
 	omegas := make([]Omega, 0)
 
-	omegas = append(omegas, (*r).delta.findMappings(abox, lastDelta))
+	omegas = append(omegas, (*r).delta.findMappings(delta))
 	for _, b := range (*r).body {
-		omegas = append(omegas, b.findMappings(abox, 0))
+		omegas = append(omegas, b.findMappings(abox))
 	}
 
 	result := omegas[0]
@@ -299,22 +298,22 @@ func (r *DeltaRule) eval(abox *[]Atom, lastDelta int) Omega {
 
 }
 
-func (r *Rule) eval(abox *[]Atom, lastDelta int) Omega {
+func (r *Rule) eval(abox, delta *[]Atom) Omega {
 	omega := make(Omega, 0)
 
 	for _, dr := range (*r).drules {
-		omega = append(omega, dr.eval(abox, lastDelta)...)
+		omega = append(omega, dr.eval(abox, delta)...)
 	}
 
 	return omega
 }
 
-func (r *Rule) evalPar(abox *[]Atom, lastDelta int) Omega {
+func (r *Rule) evalPar(abox, delta *[]Atom) Omega {
 	c := make(chan Omega)
 
 	for _, dr := range (*r).drules {
 		go func(dr DeltaRule) {
-			c <- dr.eval(abox, lastDelta)
+			c <- dr.eval(abox, delta)
 		}(dr)
 	}
 
@@ -334,61 +333,92 @@ type Stats struct {
 	cmps, iters int
 }
 
-// eval returns a list of ground atoms, considered to be a
-// delta of one cycle of rule application. A rule will only add facts
-// to delta, that result by applying at least one ground atom with id
-// >= lastCommit, in order to make shure, which atom has actually
-// derived new facts
-func eval(tbox *[]Rule, abox *[]Atom, lastDelta int, stats *Stats) []Atom {
+func eval(tbox *[]Rule, abox, delta *[]Atom) []Atom {
 
-	delta := make([]Atom, 0)
+	delta_ := make([]Atom, 0)
 
 	// TODO parallel!
 	for _, r := range *tbox {
-		omega := r.eval(abox, lastDelta)
+		omega := r.eval(abox, delta)
 		for _, mu := range omega {
-			// only add mu's that utilize a fact from the last delta,
-			// i.e. utilize a ground atom with an index >= lastDelta
-			// apply mu to all head atoms of r
 			for _, headAtom := range r.head {
 				ga := headAtom.applyMapping(&mu)
-				stats.cmps += 1
-				if !ga.knownTo(abox) && !ga.knownTo(&delta) {
-					delta = append(delta, ga)
+				if !ga.knownTo(abox) && !ga.knownTo(&delta_) {
+					delta_ = append(delta_, ga)
 				}
 			}
 		}
 	}
 
-	return delta
+	return delta_
 
 }
 
-func fixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) int {
+func negEval(tbox *[]Rule, abox, delta *[]Atom) []Atom {
 
-	stats := Stats{0, 0}
-	currDelta := len(*abox)
+	delta_ := make([]Atom, 0)
 
-	for lastDelta < currDelta {
-		delta := eval(tbox, abox, lastDelta, &stats)
-		*abox = append(*abox, delta...)
-		lastDelta = currDelta
-		currDelta = len(*abox)
-		stats.iters += 1
+	// TODO parallel!
+	for _, r := range *tbox {
+		omega := r.eval(abox, delta)
+		for _, mu := range omega {
+			for _, headAtom := range r.head {
+				ga := headAtom.applyMapping(&mu)
+				if !ga.knownTo(delta) && !ga.knownTo(&delta_) {
+					delta_ = append(delta_, ga)
+				}
+			}
+		}
 	}
 
-	return currDelta
+	return delta_
 
 }
 
-func runFixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) int {
-	fmt.Println("starting fixpoint calculation")
+func negFixpoint(tbox *[]Rule, abox, delta *[]Atom) {
+	lLen := 0
+	cLen := len(*delta)
+
+	for lLen < cLen {
+		*delta = append(*delta, negEval(tbox, abox, delta)...)
+		lLen = cLen
+		cLen = len(*delta)
+	}
+}
+
+func fixpoint(tbox *[]Rule, abox, startDelta *[]Atom) {
+
+	cLen := len(*abox)
+	lLen := 0
+	delta := *startDelta
+
+	for lLen < cLen {
+		delta = eval(tbox, abox, &delta)
+		*abox = append(*abox, delta...)
+		lLen = cLen
+		cLen = len(*abox)
+	}
+
+}
+
+func runNegFixpoint(tbox *[]Rule, abox, delta *[]Atom) {
+	fmt.Println("starting negative fixpoint calculation")
+	fmt.Println("starting delta size:", len(*delta))
 	start := time.Now()
-	lastDelta = fixpoint(tbox, abox, lastDelta)
+	negFixpoint(tbox, abox, delta)
+	elapsed := time.Since(start)
+	fmt.Println("finished negative fixpoint calculation, took", elapsed)
+	fmt.Println("final delta size:", len(*delta))
+}
+
+func runFixpoint(tbox *[]Rule, abox, startDelta *[]Atom) {
+	fmt.Println("starting fixpoint calculation")
+	fmt.Println("starting abox size:", len(*abox))
+	start := time.Now()
+	fixpoint(tbox, abox, startDelta)
 	elapsed := time.Since(start)
 	fmt.Println("finished fixpoint calculation, took", elapsed)
-	// fmt.Println("final abox size:", len(*abox), "stats:", stats1)
-	return lastDelta
+	fmt.Println("final abox size:", len(*abox))
 }
 
 //
@@ -495,38 +525,51 @@ func genRngGraph(numNodes, numAtoms int) []Atom {
 // 	return time.Since(start)
 // }
 
-func runDRed(tbox, abox, aboxExt []Atom) time.Duration {
-	runFixpoint(&tbox, &abox, 0)
-	abox = append(abox, aboxExt)
+func runDRed(tbox []Rule, abox, aboxExt []Atom) time.Duration {
+
+	runFixpoint(&tbox, &abox, &abox)
+	l := len(abox)
+	abox = append(abox, aboxExt...)
+
+	fmt.Println(abox)
 
 	// 3. in DRed (no deletions)
-	runFixpoint(&tbox, &abox, lastDelta)
+	runFixpoint(&tbox, &abox, &aboxExt)
+
+	fmt.Println(abox[l:])
+
+	start := time.Now()
+	delAtoms := aboxExt
 
 	// 1. calculate over-estimate
-	runFixpoint(&tbox, &aboxExt, 0)
+	runNegFixpoint(&tbox, &aboxExt, &delAtoms)
+
+	fmt.Println(delAtoms)
 
 	// 2. calculate the under-estimate
-	runFixpoint(&tbox, &aboxExt, 0)
+	// runFixpoint(&tbox, &aboxExt, )
+
+	return time.Since(start)
 
 }
 
-func runCommitRevert(tbox, abox, aboxExt []Atom) time.Duration {
+func runCommitRevert(tbox []Rule, abox, aboxExt []Atom) time.Duration {
 
-	lastDelta := runFixpoint(&tbox, &abox, 0)
-	stackPointer := lastDelta
+	runFixpoint(&tbox, &abox, &abox)
+	stackPointer := len(abox)
 
 	start := time.Now()
 
 	abox = append(abox, aboxExt...)
-	lastDelta = runFixpoint(&tbox, &abox, lastDelta)
+	runFixpoint(&tbox, &abox, &aboxExt)
 
 	// revert
 	abox = abox[:stackPointer]
-	lastDelta = stackPointer
+
 	fmt.Println("after revert len(abox)", len(abox))
 
 	abox = append(abox, aboxExt...)
-	lastDelta = runFixpoint(&tbox, &abox, lastDelta)
+	runFixpoint(&tbox, &abox, &aboxExt)
 
 	return time.Since(start)
 }
@@ -607,16 +650,17 @@ func main() {
 
 	tbox := []Rule{r1, r2}
 
-	nNodes := 10000
-	nEdges := 3000
-	nEdgesExt := 300
+	nNodes := 10
+	nEdges := 20
+	nEdgesExt := 10
 
 	abox := genRngGraph(nNodes, nEdges+nEdgesExt)
 	aboxExt := abox[:nEdgesExt]
 	abox = abox[nEdgesExt:]
 
 	runDRed(tbox, abox, aboxExt)
-	runCommitRevert(tbox, abox, aboxExt)
+	// runCommitRevert(tbox, abox, aboxExt)
+
 }
 
 // }}}
