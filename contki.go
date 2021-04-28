@@ -542,7 +542,7 @@ func runDRed(tbox []Rule, abox, aboxExt []Atom) time.Duration {
 	delAtoms := aboxExt
 
 	// 1. calculate over-estimate
-	runNegFixpoint(&tbox, &aboxExt, &delAtoms)
+	runNegFixpoint(&tbox, &abox, &delAtoms)
 
 	fmt.Println(delAtoms)
 
@@ -651,8 +651,8 @@ func main() {
 	tbox := []Rule{r1, r2}
 
 	nNodes := 10
-	nEdges := 20
-	nEdgesExt := 10
+	nEdges := 5
+	nEdgesExt := 3
 
 	abox := genRngGraph(nNodes, nEdges+nEdgesExt)
 	aboxExt := abox[:nEdgesExt]
