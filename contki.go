@@ -369,7 +369,7 @@ func fixpoint(tbox *[]Rule, abox, startDelta *[]Atom) {
 
 // DRed {{{
 
-func overEstimateEval(tbox *[]Rule, abox, delta, toDelete *[]Atom) []Atom {
+func overEstimateEval(tbox *[]Rule, abox, delta *[]Atom) []Atom {
 
 	delta_ := make([]Atom, 0)
 
@@ -399,69 +399,35 @@ func overEstimateFixpoint(tbox *[]Rule, abox, toDelete *[]Atom) {
 	}
 }
 
-func evalAltDerivations(tbox *[]Rule, abox_v, delta *[]Atom) []Atom {
+func overEstimateEval(tbox *[]Rule, abox, delta, deletions *[]Atom) []Atom {
 
 	delta_ := make([]Atom, 0)
 
 	// TODO parallel!
 	for _, r := range *tbox {
-
-		// now explicitly eval every delta rule
-		for _, dr := range r.drules {
-			fmt.Println("modified delta-rule:")
-			fmt.Println(dr)
-			omega := dr.eval(abox_v, delta)
-			fmt.Println(omega)
-			// and instead of using the rule's head use the
-			// deltaAtom instead for creating the new ground atom
-			for _, mu := range omega {
-				ga := dr.delta.applyMapping(&mu)
-				if !ga.knownTo(abox_v) && !ga.knownTo(&delta_) {
+		omega := r.eval(abox, delta)
+		for _, mu := range omega {
+			for _, headAtom := range r.head {
+				ga := headAtom.applyMapping(&mu)
+				if !ga.knownTo(toDelete) && !ga.knownTo(&delta_) {
 					delta_ = append(delta_, ga)
 				}
 			}
 		}
-
 	}
 
 	return delta_
 
 }
 
-func altDerivationsFixpoint(tbox *[]Rule, abox_v, toDelete *[]Atom) {
-	// modify delta rules
-	tbox_ := make([]Rule, 0, len(*tbox))
+func altDerivationsFixpoint(tbox *[]Rule, abox_v, deletions *[]Atom) {
 
-	for _, r := range *tbox {
-		drules_ := make([]DeltaRule, 0, len(r.drules))
-		for _, dr := range r.drules {
-			// add the deltaAtom back to the rule body, this way it's
-			// evaluated twice one with abox_v and one with delta^-
-			dr.body = append(dr.body, dr.delta)
-			drules_ = append(drules_, dr)
-		}
-		r.drules = drules_
-		tbox_ = append(tbox_, r)
-	}
-
-	// for _, r := range tbox_ {
-	// 	fmt.Println(r)
-	// }
-
-	delta := *toDelete
+	delta := *abox_v
 	for len(delta) > 0 {
-		delta = evalAltDerivations(&tbox_, abox_v, &delta)
+		delta = evalAltDerivations(&tbox_, abox_v, &delta, deletions)
 		*abox_v = append(*abox_v, delta...)
 	}
-	// cLen := len(*abox_v)
-	// lLen := 0
 
-	// for lLen < cLen {
-	// 	delta := evalAltDerivations(tbox, abox_v, toDelete)
-	// 	*abox_v = append(*abox_v, delta...)
-	// 	lLen = cLen
-	// 	cLen = len(*abox_v)
-	// }
 }
 
 func dRed(tbox *[]Rule, abox, toDelete *[]Atom) {
