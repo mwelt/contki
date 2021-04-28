@@ -387,7 +387,7 @@ func runFixpoint(tbox *[]Rule, abox *[]Atom, lastDelta int) int {
 	lastDelta = fixpoint(tbox, abox, lastDelta)
 	elapsed := time.Since(start)
 	fmt.Println("finished fixpoint calculation, took", elapsed)
-	// fmt.Println("final abox size:", len(*abox), "stats:", stats1)
+	fmt.Println("final abox size:", len(*abox))
 	return lastDelta
 }
 
@@ -495,22 +495,22 @@ func genRngGraph(numNodes, numAtoms int) []Atom {
 // 	return time.Since(start)
 // }
 
-func runDRed(tbox, abox, aboxExt []Atom) time.Duration {
-	runFixpoint(&tbox, &abox, 0)
-	abox = append(abox, aboxExt)
+// func runDRed(tbox *[]Rule, abox, aboxExt []Atom) time.Duration {
+// 	runFixpoint(&tbox, &abox, 0)
+// 	abox = append(abox, aboxExt)
 
-	// 3. in DRed (no deletions)
-	runFixpoint(&tbox, &abox, lastDelta)
+// 	// 3. in DRed (no deletions)
+// 	runFixpoint(&tbox, &abox, lastDelta)
 
-	// 1. calculate over-estimate
-	runFixpoint(&tbox, &aboxExt, 0)
+// 	// 1. calculate over-estimate
+// 	runFixpoint(&tbox, &aboxExt, 0)
 
-	// 2. calculate the under-estimate
-	runFixpoint(&tbox, &aboxExt, 0)
+// 	// 2. calculate the under-estimate
+// 	runFixpoint(&tbox, &aboxExt, 0)
 
-}
+// }
 
-func runCommitRevert(tbox, abox, aboxExt []Atom) time.Duration {
+func runCommitRevert(tbox []Rule, abox, aboxExt []Atom) time.Duration {
 
 	lastDelta := runFixpoint(&tbox, &abox, 0)
 	stackPointer := lastDelta
@@ -615,7 +615,7 @@ func main() {
 	aboxExt := abox[:nEdgesExt]
 	abox = abox[nEdgesExt:]
 
-	runDRed(tbox, abox, aboxExt)
+	// runDRed(tbox, abox, aboxExt)
 	runCommitRevert(tbox, abox, aboxExt)
 }
 
