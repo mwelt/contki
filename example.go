@@ -14,7 +14,14 @@ func mkProgram() Program {
 			newAtom("?x", ":link", "?z"),
 			newAtom("?z", ":reachable", "?y")}}
 
-	return Program{r1, r2}
+	// semi positive datalog
+	r3 := Rule{
+		head: newAtom("?x", ":indirect", "?y"),
+		body: []Atom{
+			newNegAtom("?x", ":link", "?y"),
+			newAtom("?x", ":reachable", "?y")}}
+
+	return Program{r1, r2, r3}
 
 }
 
@@ -45,32 +52,45 @@ func example() {
 	db.dump()
 
 	prog.register(&db)
+
+	// prog.evalNaive(&db)
+
+	// fmt.Println("Finished Naive DB:")
+	// db.dump()
+
 	prog.evalSeminaive(&db)
 
 	fmt.Println("Finished Seminaive DB:")
 	db.dump()
 
-	del := db.shallowCopy()
-	del.addAtom(newAtom(":c", ":link", ":c"))
+	db.addAtom(newAtom(":a", ":link", ":c"))
+	db.clearIdb()
+	prog.evalSeminaive(&db)
 
-	dRed(&db, &del, &prog)
-
-	fmt.Println("DB After DRed:")
+	fmt.Println("Finished Seminaive DB:")
 	db.dump()
 
-	db.commit()
+	// del := db.shallowCopy()
+	// del.addAtom(newAtom(":c", ":link", ":c"))
 
-	db_ := db.shallowCopy()
-	db_.addAtom(newAtom(":c", ":link", ":c"))
+	// dRed(&db, &del, &prog)
 
-	prog.evalSeminaiveAppend(&db, &db_)
+	// fmt.Println("DB After DRed:")
+	// db.dump()
 
-	fmt.Println("DB After Append:")
-	db.dump()
+	// db.commit()
 
-	db.revert()
+	// db_ := db.shallowCopy()
+	// db_.addAtom(newAtom(":c", ":link", ":c"))
 
-	fmt.Println("DB After Revert:")
-	db.dump()
+	// prog.evalSeminaiveAppend(&db, &db_)
+
+	// fmt.Println("DB After Append:")
+	// db.dump()
+
+	// db.revert()
+
+	// fmt.Println("DB After Revert:")
+	// db.dump()
 
 }

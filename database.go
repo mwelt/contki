@@ -53,10 +53,11 @@ func isVariable(t Term) bool { return t.getTermType() == VARIABLE }
 
 type Atom struct {
 	s, p, o Term
+	neg     bool
 }
 
 func newAtom(s, p, o string) Atom {
-	a := Atom{}
+	a := Atom{neg: false}
 	switch s[0] {
 	case ':':
 		a.s = Constant(s)
@@ -82,6 +83,12 @@ func newAtom(s, p, o string) Atom {
 		panic("only constant or variable allowed in o position")
 	}
 
+	return a
+}
+
+func newNegAtom(s, p, o string) Atom {
+	a := newAtom(s, p, o)
+	a.neg = true
 	return a
 }
 
@@ -250,6 +257,12 @@ func removeRels(rels, rels_ *map[Constant][]Atom) {
 			}
 			(*rels)[relName] = rel__
 		}
+	}
+}
+
+func (d *Database) clearIdb() {
+	for relName, _ := range (*d).idb {
+		(*d).idb[relName] = make([]Atom, 0)
 	}
 }
 
@@ -489,6 +502,22 @@ func (m1 *Mu) compatible(m2 *Mu) bool {
 	return true
 }
 
+func (m1 *Mu) negCompatible(m2 *Mu) bool {
+
+	for k, v := range *m2 {
+		v_, ok := (*m1)[k]
+		if ok {
+			if v != v_ {
+				return true
+			}
+		} else {
+			return true
+		}
+	}
+
+	return false
+}
+
 // join joins two mu mappings together
 func (m1 *Mu) join(m2 *Mu) Mu {
 	m3 := make(Mu)
@@ -529,6 +558,25 @@ func (o1 *Omega) joinPar(o2 *Omega) Omega {
 
 	for i := 0; i < len(*o1); i++ {
 		o3 = append(o3, <-c...)
+	}
+
+	return o3
+}
+
+func (o1 *Omega) joinNeg(o2 *Omega) Omega {
+	o3 := make(Omega, 0, len(*o1)+len(*o2))
+
+	for _, mu1 := range *o1 {
+		allNegCompatible := true
+		for _, mu2 := range *o2 {
+			if !mu1.negCompatible(&mu2) {
+				allNegCompatible = false
+				break
+			}
+		}
+		if allNegCompatible {
+			o3 = append(o3, mu1)
+		}
 	}
 
 	return o3

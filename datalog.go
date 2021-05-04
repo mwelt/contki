@@ -29,12 +29,20 @@ func (r *Rule) register(db *Database) {
 		panic("rule head relation already registered as EDB relation in database")
 	}
 
+	if r.head.neg {
+		panic("negation is not allowed in head atoms")
+	}
+
 	if !db.isIdbRelation(r.head.p.(Constant)) {
 		db.registerIdbRel(r.head.p.(Constant))
 	}
 
 	for _, a := range r.body {
-		if !db.isEdbRelation(a.p.(Constant)) && !db.isIdbRelation(a.p.(Constant)) {
+		isIdb := db.isIdbRelation(a.p.(Constant))
+		if isIdb && a.neg {
+			panic("negation only allowed in edb predicates")
+		}
+		if !isIdb && !db.isEdbRelation(a.p.(Constant)) {
 			db.registerEdbRel(a.p.(Constant))
 		}
 	}
@@ -78,17 +86,30 @@ func (prog *Program) toDeltaProgram(db *Database, idbOnly bool) DeltaProgram {
 func (r *DeltaRule) eval(db, delta *Database) Omega {
 
 	omegas := make([]Omega, 0)
+	negOmegas := make([]Omega, 0)
 
-	omegas = append(omegas, delta.findMappingsFor(&(*r).delta))
+	if (*r).delta.neg {
+		negOmegas = append(negOmegas, delta.findMappingsFor(&(*r).delta))
+	} else {
+		omegas = append(omegas, delta.findMappingsFor(&(*r).delta))
+	}
 
 	for _, b := range (*r).body {
-		omegas = append(omegas, db.findMappingsFor(&b))
+		if b.neg {
+			negOmegas = append(negOmegas, db.findMappingsFor(&b))
+		} else {
+			omegas = append(omegas, db.findMappingsFor(&b))
+		}
 	}
 
 	result := omegas[0]
 
 	for i := 1; i < len(omegas); i++ {
 		result = result.join(&omegas[i])
+	}
+
+	for i := 0; i < len(negOmegas); i++ {
+		result = result.joinNeg(&negOmegas[i])
 	}
 
 	return result
@@ -100,15 +121,24 @@ func (r *DeltaRule) eval(db, delta *Database) Omega {
 func (r *Rule) eval(db *Database) Omega {
 
 	omegas := make([]Omega, 0)
+	negOmegas := make([]Omega, 0)
 
 	for _, b := range (*r).body {
-		omegas = append(omegas, db.findMappingsFor(&b))
+		if b.neg {
+			negOmegas = append(negOmegas, db.findMappingsFor(&b))
+		} else {
+			omegas = append(omegas, db.findMappingsFor(&b))
+		}
 	}
 
 	result := omegas[0]
 
 	for i := 1; i < len(omegas); i++ {
 		result = result.join(&omegas[i])
+	}
+
+	for i := 0; i < len(negOmegas); i++ {
+		result = result.joinNeg(&negOmegas[i])
 	}
 
 	return result

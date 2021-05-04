@@ -4,6 +4,47 @@ import (
 	"testing"
 )
 
+func TestNegCompatible(t *testing.T) {
+	mu1 := make(Mu)
+	mu2 := make(Mu)
+	mu3 := make(Mu)
+	mu4 := make(Mu)
+	mu5 := make(Mu)
+
+	mu1[Variable("?x")] = Constant("a1")
+	mu1[Variable("?y")] = Constant("a2")
+	mu1[Variable("?p")] = Constant("a3")
+
+	mu2[Variable("?x")] = Constant("a1")
+	mu2[Variable("?y")] = Constant("a2")
+
+	mu3[Variable("?x")] = Constant("a1")
+	mu3[Variable("?y")] = Constant("a3")
+
+	mu4[Variable("?x")] = Constant("a1")
+	mu4[Variable("?z")] = Constant("a2")
+
+	mu5[Variable("?q")] = Constant("a1")
+	mu5[Variable("?z")] = Constant("a2")
+
+	if mu1.negCompatible(&mu2) {
+		t.Error("should not be negative compatible", mu1, mu2)
+	}
+
+	if !mu1.negCompatible(&mu3) {
+		t.Error("should be negative compatible", mu1, mu3)
+	}
+
+	if !mu1.negCompatible(&mu4) {
+		t.Error("should be negative compatible", mu1, mu4)
+	}
+
+	if !mu1.negCompatible(&mu5) {
+		t.Error("should be negative compatible", mu1, mu5)
+	}
+
+}
+
 func TestAtomMatches(t *testing.T) {
 
 	a1 := newAtom(":a", ":link", ":b")
@@ -52,7 +93,7 @@ func TestDatabase(t *testing.T) {
 		}
 	}
 
-	omega := db.findMappingsFor(&Atom{Variable("?x"), Constant(":link"), Variable("?y")})
+	omega := db.findMappingsFor(&Atom{Variable("?x"), Constant(":link"), Variable("?y"), false})
 
 	if len(omega) != 4 {
 		t.Error("len(omega):", len(omega), 4, len(omega))

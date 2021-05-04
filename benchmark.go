@@ -43,6 +43,15 @@ func genRngGraph(numNodes, numEdges, numEdgesExt int) (Database, Database) {
 	return db1, db2
 }
 
+func runNoInc(prog Program, db, append1, append2 Database) Database {
+	prog.evalSeminaiveAppend(&db, &append1)
+	db.remove(&append1)
+	db.clearIdb()
+	prog.evalSeminaive(&db)
+	prog.evalSeminaiveAppend(&db, &append2)
+	return db
+}
+
 func runDRed(prog Program, db, append1, append2 Database) Database {
 	prog.evalSeminaiveAppend(&db, &append1)
 	dRed(&db, &append1, &prog)
@@ -121,28 +130,36 @@ func benchmark() {
 	// db.remove(&append1)
 	// prog.evalSeminaive(&db)
 
-	nNodes := 10000
-	nEdges := 2000
-	nEdgesExt := 300
+	for nEdgesExt := 100; nEdgesExt < 1000; nEdgesExt += 10 {
 
-	db, dbExt := genRngGraph(nNodes, nEdges, nEdgesExt)
+		nNodes := 10000
+		nEdges := 2000
 
-	prog.register(&db)
-	prog.register(&dbExt)
+		db, dbExt := genRngGraph(nNodes, nEdges, nEdgesExt)
 
-	prog.evalSeminaive(&db)
+		prog.register(&db)
+		prog.register(&dbExt)
 
-	startDRed := time.Now()
-	dbAfterDRed := runDRed(prog, db.deepCopy(), dbExt.deepCopy(), dbExt.deepCopy())
-	elapsedDRed := time.Since(startDRed)
-	startCR := time.Now()
-	dbAfterCR := runCommitRevert(prog, db.deepCopy(), dbExt.deepCopy(), dbExt.deepCopy())
-	elapsedCR := time.Since(startCR)
+		prog.evalSeminaive(&db)
 
-	if !dbAfterDRed.equalTo(&dbAfterCR) {
-		panic("dabase instances were not equal, aborting.")
+		startNoInc := time.Now()
+		dbAfterNoInc := runNoInc(prog, db.deepCopy(), dbExt.deepCopy(), dbExt.deepCopy())
+		elapsedNoInc := time.Since(startNoInc)
+		startDRed := time.Now()
+		dbAfterDRed := runDRed(prog, db.deepCopy(), dbExt.deepCopy(), dbExt.deepCopy())
+		elapsedDRed := time.Since(startDRed)
+		startCR := time.Now()
+		dbAfterCR := runCommitRevert(prog, db.deepCopy(), dbExt.deepCopy(), dbExt.deepCopy())
+		elapsedCR := time.Since(startCR)
+
+		if !dbAfterNoInc.equalTo(&dbAfterDRed) || !dbAfterDRed.equalTo(&dbAfterCR) {
+			panic("dabase instances were not equal, aborting.")
+		}
+
+		fmt.Println(nNodes, nEdges, nEdgesExt,
+			uint64(elapsedNoInc/time.Millisecond),
+			uint64(elapsedDRed/time.Millisecond),
+			uint64(elapsedCR/time.Millisecond))
 	}
-
-	fmt.Println(nNodes, nEdges, nEdgesExt, elapsedDRed, elapsedCR)
 
 }
