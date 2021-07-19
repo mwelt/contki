@@ -21,9 +21,10 @@ func (prog *Program) evalOverEstimate(db, del *Database) {
 	dprog := prog.toDeltaProgram(db, false)
 
 	delta := dprog.evalOverEstimate_(db, del)
+
 	for !delta.empty() {
 		del.append(&delta, false)
-		db.remove(&delta)
+		// db.remove(&delta)
 		delta = dprog.evalOverEstimate_(db, del)
 	}
 }
@@ -66,9 +67,49 @@ func (prog *Program) evalAltDerive(db, del *Database) {
 
 func dRed(db, del *Database, prog *Program) {
 
-	prog.evalOverEstimate(db, del)
-	removeRels(&(*db).edb, &(*del).edb)
+	// fmt.Println("DRed start:")
+	// db.dump()
+	// del.dump()
 
+	// orig_del_size := del.size()
+	// db_size := db.size()
+
+	// overEstStart := time.Now()
+	prog.evalOverEstimate(db, del)
+	// overEstElapsed := time.Since(overEstStart)
+
+	// fmt.Println("Overest:")
+	// db.dump()
+	// del.dump()
+
+	// overest_size := del.size()
+
+	// removeRelsStart := time.Now()
+	// removeRels(&(*db).edb, &(*del).edb)
+	db.remove(del)
+	// removeRelsElapsed := time.Since(removeRelsStart)
+
+	// fmt.Println("Removed Overest:")
+	// db.dump()
+	// del.dump()
+
+	// del_size := del.size()
+
+	// altDeriveStart := time.Now()
 	prog.evalAltDerive(db, del)
+	// altDeriveElapsed := time.Since(altDeriveStart)
+
+	// fmt.Println("Rederived:")
+	// db.dump()
+	// del.dump()
+
+	// fmt.Println(
+	// 	orig_del_size,
+	// 	db_size,
+	// 	overest_size,
+	// 	del_size,
+	// 	uint64(overEstElapsed/time.Millisecond),
+	// 	uint64(removeRelsElapsed/time.Millisecond),
+	// 	uint64(altDeriveElapsed/time.Millisecond))
 
 }

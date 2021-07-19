@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func genRngGraph(numNodes, numEdges, numEdgesExt int) (Database, Database) {
+func genRngGraph(numNodes, numEdges, numEdgesExt int) (Database, Database, Database) {
 
 	db1 := newDatabase()
 	db1.registerEdbRel(":link")
@@ -40,31 +40,51 @@ func genRngGraph(numNodes, numEdges, numEdgesExt int) (Database, Database) {
 		}
 	}
 
-	return db1, db2
+	db3 := db1.shallowCopy()
+
+	count = 0
+
+	for count < numEdgesExt {
+		n1 := rand.Intn(numNodes)
+		n2 := rand.Intn(numNodes)
+		a := newAtom(":n"+strconv.Itoa(n1), ":link", ":n"+strconv.Itoa(n2))
+
+		if !db1.knows(a) && !db3.knows(a) {
+			db3.addAtom(a)
+			count += 1
+		}
+	}
+
+	return db1, db2, db3
 }
 
-func runNoInc(prog Program, db, append1, append2 Database) Database {
+func runNoInc(prog Program, db, append1, append2 Database) (Database, Database) {
 	prog.evalSeminaiveAppend(&db, &append1)
+	// startSN := time.Now()
 	db.remove(&append1)
 	db.clearIdb()
 	prog.evalSeminaive(&db)
+	// fmt.Println(uint64(time.Since(startSN) / time.Millisecond))
+	db_after := db.deepCopy()
 	prog.evalSeminaiveAppend(&db, &append2)
-	return db
+	return db_after, db
 }
 
-func runDRed(prog Program, db, append1, append2 Database) Database {
+func runDRed(prog Program, db, append1, append2 Database) (Database, Database) {
 	prog.evalSeminaiveAppend(&db, &append1)
 	dRed(&db, &append1, &prog)
+	db_after := db.deepCopy()
 	prog.evalSeminaiveAppend(&db, &append2)
-	return db
+	return db_after, db
 }
 
-func runCommitRevert(prog Program, db, append1, append2 Database) Database {
+func runCommitRevert(prog Program, db, append1, append2 Database) (Database, Database) {
 	db.commit()
 	prog.evalSeminaiveAppend(&db, &append1)
 	db.revert()
+	db_after := db.deepCopy()
 	prog.evalSeminaiveAppend(&db, &append2)
-	return db
+	return db_after, db
 }
 
 //// func testTransitiveClosure() {
@@ -130,31 +150,56 @@ func benchmark() {
 	// db.remove(&append1)
 	// prog.evalSeminaive(&db)
 
-	for nEdgesExt := 100; nEdgesExt < 1000; nEdgesExt += 10 {
+	for nEdgesExt := 1; nEdgesExt < 300; nEdgesExt += 2 {
 
 		nNodes := 10000
-		nEdges := 2000
+		nEdges := 5000
 
-		db, dbExt := genRngGraph(nNodes, nEdges, nEdgesExt)
+		db, dbExt1, dbExt2 := genRngGraph(nNodes, nEdges, nEdgesExt)
 
 		prog.register(&db)
-		prog.register(&dbExt)
+		prog.register(&dbExt1)
+		prog.register(&dbExt2)
 
 		prog.evalSeminaive(&db)
 
 		startNoInc := time.Now()
-		dbAfterNoInc := runNoInc(prog, db.deepCopy(), dbExt.deepCopy(), dbExt.deepCopy())
+		intermedDbNoInc, dbAfterNoInc := runNoInc(prog, db.deepCopy(), dbExt1.deepCopy(), dbExt2.deepCopy())
 		elapsedNoInc := time.Since(startNoInc)
 		startDRed := time.Now()
-		dbAfterDRed := runDRed(prog, db.deepCopy(), dbExt.deepCopy(), dbExt.deepCopy())
+		intermedDbDRed, dbAfterDRed := runDRed(prog, db.deepCopy(), dbExt1.deepCopy(), dbExt2.deepCopy())
 		elapsedDRed := time.Since(startDRed)
 		startCR := time.Now()
-		dbAfterCR := runCommitRevert(prog, db.deepCopy(), dbExt.deepCopy(), dbExt.deepCopy())
+		intermedDbCR, dbAfterCR := runCommitRevert(prog, db.deepCopy(), dbExt1.deepCopy(), dbExt2.deepCopy())
 		elapsedCR := time.Since(startCR)
 
-		if !dbAfterNoInc.equalTo(&dbAfterDRed) || !dbAfterDRed.equalTo(&dbAfterCR) {
-			panic("dabase instances were not equal, aborting.")
+		if !intermedDbNoInc.equalTo(&intermedDbDRed) {
+			panic("iterm. NoInc != DRed")
 		}
+
+		if !dbAfterNoInc.equalTo(&dbAfterDRed) {
+			panic("final NoInc != DRed")
+		}
+
+		if !intermedDbNoInc.equalTo(&intermedDbCR) {
+			panic("iterm. NoInc != CR")
+		}
+
+		if !dbAfterNoInc.equalTo(&dbAfterCR) {
+			panic("final NoInc != CR")
+		}
+
+		if !intermedDbDRed.equalTo(&intermedDbCR) {
+			panic("iterm. DRed != CR")
+		}
+
+		if !dbAfterDRed.equalTo(&dbAfterCR) {
+			panic("final DRed != CR")
+		}
+
+		// if !dbAfterNoInc.equalTo(&dbAfterDRed) || !dbAfterDRed.equalTo(&dbAfterCR) {
+		// 	panic("dabase instances were not equal, aborting.")
+		// }
 
 		fmt.Println(nNodes, nEdges, nEdgesExt,
 			uint64(elapsedNoInc/time.Millisecond),

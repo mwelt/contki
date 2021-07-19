@@ -15,13 +15,13 @@ func mkProgram() Program {
 			newAtom("?z", ":reachable", "?y")}}
 
 	// semi positive datalog
-	r3 := Rule{
-		head: newAtom("?x", ":indirect", "?y"),
-		body: []Atom{
-			newNegAtom("?x", ":link", "?y"),
-			newAtom("?x", ":reachable", "?y")}}
+	// r3 := Rule{
+	// 	head: newAtom("?x", ":indirect", "?y"),
+	// 	body: []Atom{
+	// 		newNegAtom("?x", ":link", "?y"),
+	// 		newAtom("?x", ":reachable", "?y")}}
 
-	return Program{r1, r2, r3}
+	return Program{r1, r2} //, r3}
 
 }
 
@@ -32,6 +32,7 @@ func mkDatabase() ([]Atom, Database) {
 	as := []Atom{
 		newAtom(":a", ":link", ":b"),
 		newAtom(":b", ":link", ":c"),
+		newAtom(":b", ":link", ":d"),
 		newAtom(":c", ":link", ":c"),
 		newAtom(":c", ":link", ":d"),
 	}

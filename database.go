@@ -122,6 +122,17 @@ func newDatabase() Database {
 	}
 }
 
+func (d *Database) size() int {
+	size := 0
+	for _, rel := range d.idb {
+		size += len(rel)
+	}
+	for _, rel := range d.edb {
+		size += len(rel)
+	}
+	return size
+}
+
 func (d *Database) shallowCopy() Database {
 	d_ := newDatabase()
 
